@@ -4,3 +4,6 @@
 [submodule "starter/todo-list"]
 	path = starter/todo-list
 	url = https://github.com/Kerwan-Garcon/todo-list
+[submodule "starter/password-manager"]
+	path = starter/password-manager
+	url = https://github.com/Kerwan-Garcon/password-manager
