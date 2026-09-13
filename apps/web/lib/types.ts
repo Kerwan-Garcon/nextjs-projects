@@ -1,0 +1,276 @@
+/**
+ * Client-side view of the API contract. These mirror the DTOs the services
+ * return; the API owns the shape, the web app owns the rendering.
+ */
+export interface DomainRef {
+  key: string;
+  label: string;
+  accent: string;
+  isPrimary: boolean;
+}
+
+export interface ProblemCard {
+  id: string;
+  ref: string;
+  slug: string;
+  title: string;
+  summary: string;
+  geographyLabel: string;
+  geographyScale: string;
+  countryCode: string | null;
+  difficulty: number;
+  urgency: number;
+  status: string;
+  origin: string;
+  domains: DomainRef[];
+  evidenceCount: number;
+  hypothesisCount: number;
+  researcherCount: number;
+  contributionCount: number;
+  lastActivityAt: string | null;
+  updatedAt: string;
+}
+
+export interface Source {
+  id: string;
+  title: string;
+  authors: string[];
+  publisher: string;
+  publicationDate: string | null;
+  url: string;
+  sourceType: string;
+  domain: string;
+  reliability: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
+  reliabilityNote: string | null;
+  retrievedAt: string;
+  contentHash: string;
+  origin: string;
+}
+
+export interface Statement {
+  text: string;
+  kind: 'FACT' | 'SOURCE_CLAIM' | 'HUMAN_HYPOTHESIS' | 'AI_HYPOTHESIS' | 'INFERENCE' | 'UNKNOWN';
+  kindLabel: string;
+  sourceIds: string[];
+  note: string | null;
+}
+
+export interface ProblemDetail extends ProblemCard {
+  description: string;
+  whyItMatters: Statement[];
+  currentKnowledge: Statement[];
+  constraints: Record<string, string | null>;
+  successCriteria: {
+    metric: string;
+    target: string;
+    horizon: string;
+    measurement: string | null;
+  }[];
+  openQuestions: string[];
+  sources: Source[];
+  createdAt: string;
+}
+
+export interface Author {
+  id: string;
+  handle: string;
+  displayName: string;
+  reputation: number;
+  tier: string;
+  isAnonymous: boolean;
+  origin: string;
+}
+
+export interface HypothesisSummary {
+  id: string;
+  ref: string;
+  problemId: string;
+  title: string;
+  claim: string;
+  status: string;
+  epistemicKind: string;
+  origin: string;
+  author: Author | null;
+  authorAgentRole: string | null;
+  supportingCount: number;
+  contradictingCount: number;
+  contributionCount: number;
+  confidence: 'SUPPORTED' | 'PLAUSIBLE' | 'UNCERTAIN' | 'CONTESTED' | 'REFUTED';
+  confidenceLabel: string;
+  updatedAt: string;
+}
+
+export interface Evidence {
+  id: string;
+  stance: 'SUPPORTS' | 'CONTRADICTS' | 'CONTEXT';
+  claim: string;
+  epistemicKind: Statement['kind'];
+  strength: number;
+  note: string | null;
+  origin: string;
+  createdAt: string;
+  source: Source;
+  addedBy: Author | null;
+  addedByRunId: string | null;
+}
+
+export interface HypothesisDetail extends HypothesisSummary {
+  mechanism: string;
+  expectedImpact: string;
+  assumptions: string[];
+  unknowns: string[];
+  risks: string[];
+  estimatedCost: string | null;
+  estimatedScalability: string | null;
+  validationMethod: string;
+  createdAt: string;
+  evidence: Evidence[];
+  contributors: Author[];
+  validation: {
+    decision: string;
+    rationale: string;
+    criteria: { criterion: string; met: boolean; note: string | null }[];
+    decidedAt: string;
+    decidedBy: Author | null;
+  } | null;
+  problem: { id: string; ref: string; slug: string; title: string; geographyLabel: string };
+}
+
+export interface Contribution {
+  id: string;
+  kind:
+    | 'COMMENT'
+    | 'EVIDENCE'
+    | 'COUNTERARGUMENT'
+    | 'MODIFICATION'
+    | 'QUESTION'
+    | 'EXPERIMENT'
+    | 'RESULT';
+  targetType: string;
+  targetId: string;
+  problemId: string;
+  body: string;
+  score: number;
+  signals: Record<string, number>;
+  origin: string;
+  createdAt: string;
+  author: Author;
+  sources: Source[];
+  endorsements: number;
+  replies: { id: string; body: string; createdAt: string; author: Author }[];
+}
+
+export interface AgentFinding {
+  id: string;
+  kind: string;
+  statement: string;
+  epistemicKind: Statement['kind'];
+  confidence: HypothesisSummary['confidence'];
+  reasoning: string;
+  unresolved: string | null;
+  sources: Source[];
+}
+
+export interface AgentRun {
+  id: string;
+  agentRole: string;
+  agentName: string;
+  action: string;
+  status: string;
+  provider: string;
+  model: string;
+  startedAt: string;
+  finishedAt: string | null;
+  durationMs: number | null;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  error: string | null;
+  inputDigest: string;
+  findings: AgentFinding[];
+}
+
+export interface ResearchBrief {
+  question: string;
+  generatedAt: string;
+  pipeline: { role: string; runId: string; findingCount: number }[];
+  sections: {
+    heading: string;
+    items: {
+      statement: string;
+      epistemicKind: Statement['kind'];
+      confidence: HypothesisSummary['confidence'];
+      sourceIds: string[];
+      reasoning: string;
+      unresolved: string | null;
+    }[];
+  }[];
+  nextExperiment: string | null;
+  openUnknowns: string[];
+  disclaimer: string;
+}
+
+export interface ResearchSession {
+  id: string;
+  title: string;
+  question: string;
+  action: string;
+  status: string;
+  createdAt: string;
+  completedAt: string | null;
+  brief: ResearchBrief | null;
+  requestedBy: Author | null;
+  hypothesis: { id: string; ref: string; title: string } | null;
+  problem: { id: string; ref: string; slug: string; title: string } | null;
+  runs: AgentRun[];
+}
+
+export interface ResearchActionDef {
+  action: string;
+  label: string;
+  description: string;
+  pipeline: { role: string; name: string; mission: string }[];
+}
+
+export interface PlatformStats {
+  activeProblems: number;
+  activeResearchers: number;
+  hypotheses: number;
+  validatedContributions: number;
+  sources: number;
+  agentRuns: number;
+}
+
+export interface Meta {
+  stats: PlatformStats;
+  domains: { key: string; label: string; description: string; accent: string }[];
+  epistemicKinds: {
+    kind: Statement['kind'];
+    label: string;
+    short: string;
+    definition: string;
+    requiresSource: boolean;
+  }[];
+  confidenceLevels: { level: string; label: string; definition: string; rank: number }[];
+  hypothesisStatuses: string[];
+  reputationTiers: { key: string; label: string; min: number }[];
+  scoringWeights: Record<string, number>;
+  researchActions: ResearchActionDef[];
+  agents: {
+    role: string;
+    name: string;
+    mission: string;
+    description: string;
+    tools: string[];
+    permissions: Record<string, unknown>;
+  }[];
+  ai: { provider: string; model: string };
+}
+
+export interface SessionUser {
+  id: string;
+  handle: string;
+  displayName: string;
+  reputation: number;
+  trust: number;
+  isAnonymous: boolean;
+}
