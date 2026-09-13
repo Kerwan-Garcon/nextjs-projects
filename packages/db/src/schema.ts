@@ -70,6 +70,29 @@ export interface AuthSessionsTable {
   expires_at: RequiredTimestamp;
 }
 
+export interface OauthIdentitiesTable {
+  id: Generated<string>;
+  provider: string;
+  subject: string;
+  user_id: string;
+  email: string | null;
+  email_verified: Generated<boolean>;
+  display_name: string | null;
+  picture_url: string | null;
+  created_at: Timestamp;
+  last_login_at: Timestamp;
+}
+
+export interface OauthStatesTable {
+  state: string;
+  provider: string;
+  code_verifier: string;
+  nonce: string;
+  redirect_to: string | null;
+  created_at: Timestamp;
+  expires_at: RequiredTimestamp;
+}
+
 export interface SourcesTable {
   id: Generated<string>;
   title: string;
@@ -110,6 +133,7 @@ export interface ProblemsTable {
   status: Generated<ProblemStatus>;
   origin: Generated<Origin>;
   published_by_id: string | null;
+  source_candidate_id: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
 }
@@ -310,6 +334,34 @@ export interface ReputationEventsTable {
   created_at: Timestamp;
 }
 
+export interface FetchStateTable {
+  url: string;
+  connector: string;
+  etag: string | null;
+  last_modified: string | null;
+  last_status: Generated<string>;
+  last_error: string | null;
+  last_fetched_at: Timestamp;
+}
+
+export interface IngestionRunsTable {
+  id: Generated<string>;
+  connector: string;
+  trigger: Generated<string>;
+  started_at: Timestamp;
+  finished_at: NullableTimestamp;
+  fetched: Generated<number>;
+  accepted: Generated<number>;
+  weak: Generated<number>;
+  rejected: Generated<number>;
+  duplicates: Generated<number>;
+  candidates: Generated<number>;
+  deferred: Generated<number>;
+  flagged: Generated<number>;
+  rejection_reasons: Json<Record<string, number>>;
+  error: string | null;
+}
+
 export interface RawDocumentsTable {
   id: Generated<string>;
   connector: string;
@@ -322,6 +374,12 @@ export interface RawDocumentsTable {
   content_hash: string;
   flags: Generated<string[]>;
   fetched_at: Timestamp;
+  intake_verdict: Generated<'ACCEPT' | 'WEAK' | 'REJECT'>;
+  intake_score: Generated<number>;
+  intake_code: string | null;
+  intake_reasons: Generated<string[]>;
+  intake_matched: Generated<string[]>;
+  ingestion_run_id: string | null;
 }
 
 export interface ProblemCandidatesTable {
@@ -341,6 +399,8 @@ export interface ProblemCandidatesTable {
   curator_note: string | null;
   curated_by_id: string | null;
   published_problem_id: string | null;
+  relevance_score: Generated<number>;
+  assessment: Json<Record<string, unknown>>;
   created_at: Timestamp;
   updated_at: Timestamp;
 }
@@ -361,6 +421,8 @@ export interface Database {
   users: UsersTable;
   user_domains: UserDomainsTable;
   auth_sessions: AuthSessionsTable;
+  oauth_identities: OauthIdentitiesTable;
+  oauth_states: OauthStatesTable;
   sources: SourcesTable;
   problems: ProblemsTable;
   problem_domains: ProblemDomainsTable;
@@ -377,6 +439,8 @@ export interface Database {
   agent_findings: AgentFindingsTable;
   validations: ValidationsTable;
   reputation_events: ReputationEventsTable;
+  fetch_state: FetchStateTable;
+  ingestion_runs: IngestionRunsTable;
   raw_documents: RawDocumentsTable;
   problem_candidates: ProblemCandidatesTable;
   audit_log: AuditLogTable;
@@ -404,3 +468,5 @@ export type ResearchSessionRow = Selectable<ResearchSessionsTable>;
 export type HypothesisEvidenceRow = Selectable<HypothesisEvidenceTable>;
 export type ReputationEventRow = Selectable<ReputationEventsTable>;
 export type ProblemCandidateRow = Selectable<ProblemCandidatesTable>;
+export type IngestionRunRow = Selectable<IngestionRunsTable>;
+export type RawDocumentRow = Selectable<RawDocumentsTable>;

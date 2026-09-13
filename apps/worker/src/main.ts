@@ -2,12 +2,14 @@ import { isKnownJobName, JOB_NAMES, type JobEnvelope, type Queue } from '@saveus
 import { InMemoryQueue, RedisQueue } from '@saveus/common/queue';
 import {
   CorpusSearchProvider,
-  DEFAULT_CONNECTORS,
   ProblemScopedSearchProvider,
+  isLiveIntakeEnabled,
+  resolveConnectors,
   resolveProvider,
   runIngestion,
   runResearchPipeline,
 } from '@saveus/agents';
+import { IntakeScheduler } from './scheduler.js';
 import { createDb, type Db } from '@saveus/db';
 import type { ResearchAction } from '@saveus/common';
 
@@ -68,12 +70,28 @@ async function handle(db: Db, job: JobEnvelope): Promise<void> {
     }
 
     case JOB_NAMES.ingestionCycle: {
-      const stats = await runIngestion({ db, connectors: DEFAULT_CONNECTORS });
+      const payload = job.payload as { trigger?: 'MANUAL' | 'SCHEDULED' | 'SEED' } | null;
+      const stats = await runIngestion({
+        db,
+        connectors: resolveConnectors(db),
+        trigger: payload?.trigger ?? 'MANUAL',
+      });
+
       for (const stat of stats) {
         console.log(
-          `[worker] ingestion ${stat.connector}: fetched ${stat.fetched}, ${stat.candidates} candidate(s), ` +
-            `${stat.duplicates} duplicate(s), ${stat.rejected.length} rejected`,
+          `[worker] intake ${stat.connector}: fetched ${stat.fetched} -> ` +
+            `${stat.accepted} accepted, ${stat.weak} weak, ${stat.rejected} rejected, ` +
+            `${stat.duplicates} duplicate(s) -> ${stat.candidates} candidate(s) queued` +
+            (stat.deferred > 0 ? `, ${stat.deferred} deferred over the cap` : ''),
         );
+        // The reasons matter more than the counts: they are how the gate gets
+        // tuned when the queue fills with the wrong thing.
+        for (const [reason, count] of Object.entries(stat.rejectionReasons).sort((a, b) => b[1] - a[1])) {
+          console.log(`[worker]   rejected x${count}: ${reason}`);
+        }
+        for (const error of stat.errors) {
+          console.warn(`[worker]   error on ${error.externalId}: ${error.reason}`);
+        }
       }
       return;
     }
@@ -93,6 +111,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     console.log(`[worker] ${signal} received, draining.`);
     running = false;
+    scheduler.stop();
     await queue.close().catch(() => undefined);
     await db.destroy();
     await pool.end().catch(() => undefined);
@@ -102,7 +121,12 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => void shutdown('SIGINT'));
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
-  console.log('[worker] ready.');
+  const scheduler = new IntakeScheduler({ db, queue });
+  scheduler.start();
+
+  console.log(
+    `[worker] ready. Intake mode: ${isLiveIntakeEnabled() ? 'LIVE (real connectors)' : 'OFFLINE (seeded connectors; set INTAKE_LIVE=true to fetch)'}.`,
+  );
 
   while (running) {
     const job = await queue.reserve();

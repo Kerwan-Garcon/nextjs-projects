@@ -43,8 +43,12 @@ REAL WORLD PROBLEM → EVIDENCE → HUMAN HYPOTHESES → DISCUSSION
 - **Agents cannot fabricate citations.** Every run is given an explicit list of
   citable source ids; citations outside it are stripped and counted on the run.
 - **Nothing publishes itself.** Ingestion produces _candidates_ with a failed
-  checklist attached. A named human curator decides, and approval only unlocks
-  the problem editor.
+  checklist attached. A named human curator decides, approval only unlocks the
+  problem editor, and the checklist runs again on the server against what the
+  curator wrote.
+- **An open question with nothing riding on it is not a problem.** The intake
+  gate requires gap language *and* stated stakes *and* a societal subject before
+  a document reaches a human, and records the verdict on everything it refused.
 - **Volume is not a path to standing.** A contribution's reputation award is
   damped by how much the same author has already posted on the same problem.
 
@@ -181,6 +185,12 @@ nothing.
 | `AI_PROVIDER`       | no                | Set to `deterministic` to force the offline provider even with a key present.                                   |
 | `REDIS_URL`         | no                | Switches the worker queue from in-memory to Redis.                                                              |
 | `PORT`              | no                | Port for the standalone API server (`apps/api`).                                                                |
+| `PUBLIC_APP_URL`      | for Google sign-in | Public origin of the web app. Builds the OAuth redirect URI and bounds where a sign-in may return to. Defaults to `http://localhost:3000`. |
+| `GOOGLE_CLIENT_ID`     | no | Enables Google sign-in. Without it (or without the secret) the button is simply absent.                                        |
+| `GOOGLE_CLIENT_SECRET` | no | Paired with the client id. Half-configured counts as unconfigured.                                                             |
+| `INTAKE_LIVE`       | no                | `true` makes the worker fetch real feeds. Off by default: tests and CI never touch the network.                 |
+| `INTAKE_HOUR_UTC`   | no                | UTC hour for the daily intake cycle. Default `5`.                                                               |
+| `INTAKE_USER_AGENT` | no                | Sent on every outbound intake request. Put a real contact address in it.                                        |
 
 ### Database
 
@@ -204,7 +214,182 @@ the database, by an agent whose permissions are recorded, in a run you can open.
 Seed volume: 11 domains · 11 agents · 20 researchers · 141 sources ·
 21 problems · 53 hypotheses · ~174 evidence links · ~255 contributions ·
 ~101 replies · 5 research sessions · 11 agent runs · ~77 findings ·
-7 ingestion candidates · ~450 reputation events.
+6 ingestion candidates · ~450 reputation events.
+
+---
+
+## Identity
+
+There are still no passwords. What the platform needs is a stable, credited
+author for a contribution, not proof of who somebody is, and an anonymous
+account is worth exactly as much reputation as any other.
+
+Two doors:
+
+- **A handle.** Pick one, or take a seeded demo identity to look around.
+- **Google.** Optional, and absent from the sign-in page unless both
+  `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set — half-configured counts
+  as unconfigured, because a sign-in button that leads to an error is worse than
+  no button.
+
+Google sign-in exists because "pick a handle" is a poor door for anyone
+returning on a second device, not because the platform wants an identity
+document. It asks for `openid email profile` and nothing else. The address is
+never shown on the board; a handle derived from it is.
+
+It is the authorization-code flow with PKCE, written out rather than pulled from
+a library, because each of its four steps has to be done exactly right and a
+dependency would hide which of them this code performs:
+
+- the PKCE verifier never leaves the server — only its SHA-256 goes to Google;
+- `state` is stored server-side with an expiry and **deleted on use**, so a
+  replayed callback finds nothing;
+- `nonce` is echoed in the ID token, tying it to this authorisation request;
+- the ID token is fully verified: RS256 signature against Google's published
+  keys (cached per their `Cache-Control`), then issuer, audience, expiry and
+  nonce. TLS to the token endpoint arguably makes the signature check redundant;
+  doing it anyway costs one cached request and removes the argument.
+- the post-sign-in redirect accepts a path on this app and nothing else. An open
+  redirect on a sign-in endpoint is the classic way to make a phishing link look
+  genuine.
+
+The provider's **subject** is the link, never the email: an email can be
+reassigned, and Google says so. An unverified address cannot claim an account,
+and a handle-only account is never claimed by an email — nobody proved they own
+that handle.
+
+`apps/api/tests/google-oauth.test.ts` mints its own RSA key and forges its own
+tokens, so the whole verification path runs for real: a token with the wrong
+audience, the wrong issuer, the wrong nonce, `alg: none`, a past expiry, or a
+signature from a key Google does not publish is refused by the same code that
+will see Google's.
+
+---
+
+## Daily problem intake
+
+The board is fed by a scheduled pipeline that reads real publishers, not by
+someone pasting links. It is off by default (`INTAKE_LIVE=true` turns it on) and
+it runs once a day, because a daily feed published once a day does not reward
+being fetched more often.
+
+```
+FETCH → NORMALIZE → DEDUPLICATE → CLASSIFY → ASSESS RELEVANCE
+      → EXTRACT CLAIMS → IDENTIFY OPEN PROBLEMS → GENERATE CANDIDATE
+      → CURATE (human) → PUBLISH (human)
+```
+
+### Where it reads
+
+| Connector             | Source                                                           | Why                                                                                        |
+| --------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `institutional-feeds` | WHO, UNEP, EEA newsroom feeds                                     | Assessments and policy publications, which is where institutions state what they cannot yet do. |
+| `journal-feeds`       | Nature, Nature Climate Change, The Lancet Planetary Health        | Peer-reviewed tables of contents. Low yield by design — most of a journal issue is commentary — but high value when it lands. |
+| `analysis-feeds`      | Carbon Brief                                                      | Specialist analysis. Classified MEDIUM reliability; useful for framing, never as the only source. |
+| `europepmc`           | Europe PMC REST API, open-access filtered                         | The highest-signal source in the set: an abstract is where authors state their own limitations. |
+
+There is no HTML scraping anywhere in it. Scraping a page that was not offered
+for machine reading is fragile, rude, and the first thing to break.
+
+**OpenAlex was dropped.** It was the obvious choice for the scholarly connector
+and it now meters requests against a paid budget, answering with
+`Insufficient budget`. Europe PMC is free, needs no key, and returns real
+abstracts. Semantic Scholar rate-limited anonymous requests; Crossref works but
+its abstract coverage is too thin for a filter that reads abstracts.
+
+### The relevance gate
+
+The way an automated problem feed fails is not by fetching too little. It is by
+filling the board with announcements that look like problems. So intake is a
+gate, not a funnel, and a document has to answer three questions:
+
+1. **Is something unresolved?** Gap language — *remains unclear*, *has not been
+   quantified*, *knowledge gap*, *no consensus*.
+2. **Does anything ride on it?** Stakes — mortality, exposure, scarcity, loss,
+   contamination, resistance, displacement.
+3. **Is the subject societal?** The title has to name a consequence or a
+   population, not a technique, a molecule or a specimen.
+
+Plus outright disqualifiers: awards, appointments, partnership signings,
+obituaries, webinars, corrections, launches, study protocols, taxonomic records,
+genomic surveys, method papers.
+
+The second and third questions exist because of what the first run against live
+literature actually returned. Searching for gap language alone surfaces
+excellent science that is not a problem for this board — a novel record of a
+brown hyaena in a national park, xylem sap metabolomics in two bean genotypes, a
+silage substitution trial. Every one of those states an open question; none is
+something anybody needs solved. Those exact documents are now test cases in
+`packages/common/tests/intake.test.ts`.
+
+A representative live cycle:
+
+```
+institutional-feeds  fetched 60 →  1 queued   (34 narrow subject, 15 no gap, 6 too thin)
+journal-feeds        fetched 51 →  0 queued   (24 narrow subject, 12 disqualified, 12 too thin)
+analysis-feeds       fetched 12 →  2 queued
+europepmc            fetched 70 → 10 queued   (17 held over the per-run cap)
+```
+
+**A cycle that fetches sixty documents and queues one is the filter working.**
+Every fetched document is stored with the verdict it received, its score and the
+signals that fired, and the rejected panel on `/research` shows them — so the
+filter is tuned against what it actually discarded, not against a guess.
+
+Only `ACCEPT` reaches the queue. `WEAK` is recorded in full and visible in the
+health panel, but a curator's attention is a scarce resource and filling their
+queue with things the gate itself doubts is how it stops being read. Each
+connector may add at most `MAX_CANDIDATES_PER_RUN` candidates per cycle,
+highest-scoring first; the rest wait for the next cycle.
+
+### Being a good citizen of other people's servers
+
+`HttpFetcher` is deliberately conservative: one request at a time per host with
+a minimum gap, a User-Agent naming the project and a contact address,
+conditional requests so an unchanged feed costs a 304, `Retry-After` honoured
+rather than hammered through, a response size cap, a content-type check, and the
+same SSRF guard used everywhere else re-applied after **every** redirect rather
+than trusted once.
+
+Two things it learned from real feeds:
+
+- **feeds.nature.com redirects to www.nature.com, which redirects back.** An
+  earlier version re-entered the per-host queue on each hop and deadlocked the
+  moment two hosts pointed at each other. Redirects are now followed inside the
+  slot already held, with a visited-URL set and a hop bound.
+- **The EEA's feed hands back item links pointing at `10.140.145.84:3000`** —
+  the CMS behind its load balancer. The SSRF guard correctly refused all 25
+  items, which cost the whole feed. Such a link is now re-based onto the origin
+  we actually fetched from: the path is real, the origin is the publisher's
+  mistake.
+
+Similarly, `fast-xml-parser`'s billion-laughs guard counts ordinary `&amp;` and
+throws past a thousand of them, which silently cost the WHO and UNEP feeds
+entirely. Entity decoding is now done here, from a fixed table, in a single
+non-recursive pass — which removes the attack the guard exists to stop rather
+than raising its limit.
+
+### Nothing publishes itself
+
+A problem never becomes public because a model produced it. The pipeline's only
+output is a candidate in the curation queue, with its failing checklist items
+attached. From there:
+
+1. A named human **approves** or **rejects** it. The decision is audit-logged.
+2. Approval unlocks the **problem editor**, and nothing else. The curator writes
+   the factual description, the quantified consequences, the constraints and the
+   success criteria themselves — the intake draft is a starting point, not text
+   to publish.
+3. On submission the publication checklist runs **again, on the server, against
+   what the curator actually wrote**. An approval cannot buy a pass: a statement
+   with no quantified consequence or no measurable success criterion is refused
+   at 422 with the failing items named.
+
+Run one cycle by hand and see what the gate did with everything it saw:
+
+```bash
+INTAKE_LIVE=true pnpm intake
+```
 
 ---
 
@@ -258,7 +443,8 @@ confidence, its sources, its reasoning and what it could not resolve.
    export class MyConnector implements SourceConnector {
      readonly name = 'my-connector';
      readonly description = 'What this feed is.';
-     // Documents from any other host are rejected at normalisation.
+     // Documents from any other host are rejected at normalisation, so a
+     // connector cannot smuggle in a source from somewhere else.
      readonly allowedHosts = ['example.org'];
 
      async fetch(): Promise<RawDocument[]> {
@@ -270,14 +456,22 @@ confidence, its sources, its reasoning and what it could not resolve.
    }
    ```
 
-2. Register it in `DEFAULT_CONNECTORS` (same directory), or pass it to
-   `runIngestion({ db, connectors })` for a one-off run.
+   For anything that speaks RSS or Atom, `FeedConnector` already does this:
+   give it a `FeedDefinition[]`, an `HttpFetcher` and a state store.
 
-Nothing else changes: the pipeline normalises, deduplicates, classifies,
-extracts claims, decides whether an open problem is present, drafts a candidate
-and scores it against the publication checklist. The candidate lands in the
-curation queue with its failing checks attached. It never becomes a public
-problem on its own.
+2. Register it: in `DEFAULT_CONNECTORS` (`connectors/mock.ts`) for the offline
+   set, in `liveConnectors()` (`ingestion/registry.ts`) for the live set, or
+   pass it straight to `runIngestion({ db, connectors })` for a one-off.
+
+3. Use `HttpFetcher` rather than `fetch`. It applies the SSRF guard on every
+   redirect hop, serialises requests per host with a minimum interval, sends
+   conditional requests, honours `Retry-After`, caps the response size and
+   checks the content type.
+
+Nothing else changes. The pipeline normalises, deduplicates, runs the relevance
+gate, classifies, extracts claims, drafts a candidate and scores it against the
+publication checklist. The candidate lands in the curation queue with its
+failing checks attached. It never becomes a public problem on its own.
 
 ### Add an AI agent
 
@@ -330,10 +524,11 @@ pnpm verify        # typecheck + lint + test
 
 | Suite                   | Covers                                                                                                                                                                                                                                                                                                                         |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `packages/common/tests` | Scoring weights and volume damping, reputation tiers, confidence from evidence, the validation gate, hypothesis lifecycle transitions, URL and source normalisation, deduplication, SHA-256 vectors, prompt-injection flagging, rate limits, the problem publication checklist.                                                |
-| `packages/agents/tests` | Agent registry and tool permissions, output validation and citation whitelisting, every role's deterministic behaviour, prompt construction and untrusted-text wrapping, JSON extraction.                                                                                                                                      |
-| `apps/api/tests`        | The HTTP surface against a real seeded database: filters, epistemic invariants on responses, auth, contribution scoring and damping, the self-validation ban, evidence attachment and status derivation, private-host rejection, the full-review pipeline, agent-run rate limiting, leaderboard ordering, profiles, ingestion. |
-| `tests/e2e`             | The journey: sign in → board → problem → hypothesis → contribute → run a research action → inspect the agent run → see it in the record.                                                                                                                                                                                       |
+| `packages/common/tests` | Scoring weights and volume damping, reputation tiers, confidence from evidence, the validation gate, hypothesis lifecycle transitions, URL and source normalisation, deduplication, SHA-256 vectors, prompt-injection flagging, rate limits, the problem publication checklist, and the intake relevance gate pinned against documents live feeds actually returned. |
+| `packages/agents/tests` | Agent registry and tool permissions, output validation and citation whitelisting, every role's deterministic behaviour, prompt construction and untrusted-text wrapping, JSON extraction. Plus intake: RSS/Atom/entity parsing against the shapes real publishers serve, feed-link repair, the HTTP client's refusals, claim extraction. |
+| `apps/api/tests`        | The HTTP surface against a real seeded database: filters, epistemic invariants on responses, auth, contribution scoring and damping, the self-validation ban, evidence attachment and status derivation, private-host rejection, the full-review pipeline, agent-run rate limiting, leaderboard ordering, profiles, ingestion, publishing from a candidate, and the Google OAuth flow against forged tokens. |
+| `apps/worker/tests`     | The daily schedule: it must not fetch other people's servers twice in a day, and must still fetch them once after a restart.                                                                                                                                                                                                    |
+| `tests/e2e`             | Two journeys. The researcher's: sign in → board → problem → hypothesis → contribute → run a research action → inspect the agent run → see it in the record. And the curator's: the intake health panel, approving a candidate, the editor that approval unlocks, and the checklist refusing an empty statement.                |
 
 The API suite needs `TEST_DATABASE_URL` pointing at a database it may drop.
 

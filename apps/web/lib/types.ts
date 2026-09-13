@@ -274,3 +274,75 @@ export interface SessionUser {
   trust: number;
   isAnonymous: boolean;
 }
+
+/* ------------------------------------------------------------------ */
+/* Intake                                                              */
+/* ------------------------------------------------------------------ */
+
+export interface IntakeAssessmentView {
+  verdict: 'ACCEPT' | 'WEAK' | 'REJECT';
+  score: number;
+  code: string | null;
+  matched: string[];
+  reasons: string[];
+}
+
+export interface CandidateDraftView {
+  title: string;
+  summary: string;
+  description: string;
+  whyItMatters: { text: string; sourceIds: string[] }[];
+  openQuestions: string[];
+}
+
+export interface IntakeCandidate {
+  id: string;
+  connector: string;
+  title: string;
+  summary: string;
+  status: string;
+  curationScore: number;
+  relevanceScore: number;
+  assessment: IntakeAssessmentView | null;
+  blocking: string[];
+  warnings: string[];
+  proposedDomains: string[];
+  extractedClaims: { text: string; epistemicKind: string; sourceIds: string[] }[];
+  draft: CandidateDraftView | null;
+  sources: Source[];
+  curatorHandle: string | null;
+  curatorNote: string | null;
+  publishedSlug: string | null;
+  createdAt: string;
+}
+
+export interface IngestionRun {
+  id: string;
+  connector: string;
+  trigger: string;
+  startedAt: string;
+  finishedAt: string | null;
+  fetched: number;
+  accepted: number;
+  weak: number;
+  rejected: number;
+  duplicates: number;
+  candidates: number;
+  deferred: number;
+  flagged: number;
+  rejectionReasons: Record<string, number>;
+  error: string | null;
+}
+
+export interface RejectedDocument {
+  id: string;
+  connector: string;
+  title: string;
+  url: string;
+  publisher: string;
+  publishedAt: string | null;
+  score: number;
+  code: string | null;
+  reasons: string[];
+  fetchedAt: string;
+}

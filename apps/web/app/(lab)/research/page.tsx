@@ -1,33 +1,38 @@
 import Link from 'next/link';
 import { Badge, Empty, Panel, PanelHeader, SectionHeading } from '@saveus/ui';
+import { CurationQueue } from '@/components/curation-queue';
 import { SessionView } from '@/components/session-view';
 import { apiGet } from '@/lib/server-api';
-import type { Meta, ResearchSession } from '@/lib/types';
+import type {
+  IngestionRun,
+  IntakeCandidate,
+  Meta,
+  RejectedDocument,
+  ResearchSession,
+  SessionUser,
+} from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
-interface Candidate {
-  id: string;
-  connector: string;
-  title: string;
-  summary: string;
-  status: string;
-  curationScore: number;
-  blocking: string[];
-  warnings: string[];
-  proposedDomains: string[];
-  createdAt: string;
-  curatorHandle: string | null;
+interface ConnectorInfo {
+  name: string;
+  description: string;
+  allowedHosts: string[];
 }
 
 export default async function ResearchPage() {
-  const [meta, sessions, candidates, connectors] = await Promise.all([
+  const [meta, viewer, sessions, candidates, connectors, runs, rejected] = await Promise.all([
     apiGet<Meta>('/api/meta'),
+    apiGet<{ user: SessionUser | null }>('/api/me'),
     apiGet<{ sessions: ResearchSession[] }>('/api/research/sessions?limit=20'),
-    apiGet<{ candidates: Candidate[] }>('/api/ingestion/candidates'),
-    apiGet<{ connectors: { name: string; description: string; allowedHosts: string[] }[] }>(
-      '/api/ingestion/connectors',
-    ),
+    apiGet<{ candidates: IntakeCandidate[] }>('/api/ingestion/candidates'),
+    apiGet<{
+      live: boolean;
+      thresholds: { accept: number; weak: number; minBodyLength: number };
+      connectors: ConnectorInfo[];
+    }>('/api/ingestion/connectors'),
+    apiGet<{ runs: IngestionRun[] }>('/api/ingestion/runs'),
+    apiGet<{ documents: RejectedDocument[] }>('/api/ingestion/rejected'),
   ]);
 
   return (
@@ -103,59 +108,19 @@ export default async function ResearchPage() {
             title="Curation queue"
             meta="Candidates proposed by connectors. A human curator decides; the pipeline cannot publish."
           />
-          {candidates.candidates.length === 0 ? (
-            <p className="px-4 py-6 text-[12px] text-ink-dim">The intake queue is empty.</p>
-          ) : (
-            <ul className="divide-y divide-line">
-              {candidates.candidates.map((candidate) => (
-                <li key={candidate.id} className="px-4 py-3.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={candidate.status === 'PENDING_CURATION' ? 'warn' : 'neutral'}>
-                      {candidate.status.replace(/_/g, ' ')}
-                    </Badge>
-                    <span className="mono text-[10px] text-ink-dim">{candidate.connector}</span>
-                    <span className="mono text-[10px] text-ink-dim">
-                      checklist {candidate.curationScore.toFixed(0)}/100
-                    </span>
-                    {candidate.proposedDomains.map((domain) => (
-                      <span
-                        key={domain}
-                        className="mono text-[9.5px] uppercase tracking-[0.1em] text-ink-dim"
-                      >
-                        {domain}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="mt-1.5 text-[13px] leading-snug text-ink">{candidate.title}</p>
-                  <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">
-                    {candidate.summary}
-                  </p>
-                  {candidate.blocking.length > 0 ? (
-                    <div className="mt-2">
-                      <span className="label">Blocking checks</span>
-                      <ul className="mt-1 space-y-0.5">
-                        {candidate.blocking.map((item) => (
-                          <li key={item} className="text-[11.5px] text-alert">
-                            ✗ {item}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                  {candidate.warnings.length > 0 ? (
-                    <p className="mt-1.5 text-[11.5px] text-warn">
-                      Warnings: {candidate.warnings.join(' · ')}
-                    </p>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
+          <CurationQueue candidates={candidates.candidates} user={viewer.user} />
         </Panel>
 
         <div className="space-y-4">
           <Panel>
-            <PanelHeader title="Connectors" />
+            <PanelHeader
+              title="Connectors"
+              meta={
+                connectors.live
+                  ? 'Live. Fetching real feeds on the daily schedule.'
+                  : 'Offline. Set INTAKE_LIVE=true to fetch real feeds; the seeded connectors exercise the same code path.'
+              }
+            />
             <ul className="divide-y divide-line">
               {connectors.connectors.map((connector) => (
                 <li key={connector.name} className="px-4 py-3">
@@ -181,6 +146,7 @@ export default async function ResearchPage() {
                 'NORMALIZE',
                 'DEDUPLICATE',
                 'CLASSIFY',
+                'ASSESS RELEVANCE',
                 'EXTRACT CLAIMS',
                 'IDENTIFY OPEN PROBLEMS',
                 'GENERATE CANDIDATE',
@@ -207,6 +173,94 @@ export default async function ResearchPage() {
             </p>
           </Panel>
         </div>
+      </div>
+
+      <SectionHeading>Intake health</SectionHeading>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel>
+          <PanelHeader
+            title="Cycles"
+            meta={`Accept at ${connectors.thresholds.accept}, floor at ${connectors.thresholds.weak}. Only ACCEPT reaches the queue.`}
+          />
+          {runs.runs.length === 0 ? (
+            <p className="px-4 py-6 text-[12px] text-ink-dim">No cycle has run yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-[11.5px]">
+                <thead>
+                  <tr className="border-b border-line text-left">
+                    {['connector', 'when', 'fetched', 'queued', 'weak', 'rejected', 'dup'].map(
+                      (head) => (
+                        <th
+                          key={head}
+                          className="mono px-3 py-2 text-[9.5px] uppercase tracking-[0.1em] text-ink-dim"
+                        >
+                          {head}
+                        </th>
+                      ),
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {runs.runs.slice(0, 12).map((run) => (
+                    <tr key={run.id}>
+                      <td className="mono px-3 py-1.5 text-ink">{run.connector}</td>
+                      <td className="mono px-3 py-1.5 text-ink-dim">
+                        {run.startedAt.slice(5, 16).replace('T', ' ')}
+                      </td>
+                      <td className="mono px-3 py-1.5 text-ink-muted">{run.fetched}</td>
+                      <td className="mono px-3 py-1.5 text-ok">
+                        {run.candidates}
+                        {run.deferred > 0 ? (
+                          <span className="text-ink-dim"> (+{run.deferred} held)</span>
+                        ) : null}
+                      </td>
+                      <td className="mono px-3 py-1.5 text-warn">{run.weak}</td>
+                      <td className="mono px-3 py-1.5 text-ink-dim">{run.rejected}</td>
+                      <td className="mono px-3 py-1.5 text-ink-dim">{run.duplicates}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="border-t border-line px-4 py-3 text-[11.5px] leading-relaxed text-ink-dim">
+            A cycle that fetches sixty documents and queues one is the filter working, not the
+            filter failing. Most of what a newsroom publishes is not a problem.
+          </p>
+        </Panel>
+
+        <Panel>
+          <PanelHeader
+            title="Thrown out"
+            meta="What the gate refused, and why. The queue is only half the record."
+          />
+          {rejected.documents.length === 0 ? (
+            <p className="px-4 py-6 text-[12px] text-ink-dim">Nothing has been rejected yet.</p>
+          ) : (
+            <ul className="max-h-[420px] divide-y divide-line overflow-y-auto">
+              {rejected.documents.slice(0, 25).map((document) => (
+                <li key={document.id} className="px-4 py-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone="alert">{document.code ?? 'REJECT'}</Badge>
+                    <span className="mono text-[9.5px] text-ink-dim">{document.connector}</span>
+                  </div>
+                  <a
+                    href={document.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="mt-1 block text-[12px] leading-snug text-ink-muted hover:text-signal"
+                  >
+                    {document.title}
+                  </a>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-ink-dim">
+                    {document.reasons[0]}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
       </div>
     </div>
   );

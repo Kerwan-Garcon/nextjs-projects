@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { resolveConnectors, runIngestion } from '@saveus/agents';
 import { createHarness, postJson, withCookie, type Harness } from './helpers.js';
 
 let harness: Harness;
@@ -164,6 +165,26 @@ describe('authentication', () => {
       withCookie('saveus_session=forged.signature'),
     );
     expect(me.user).toBeNull();
+  });
+});
+
+describe('sign-in providers', () => {
+  it('advertises Google only when it is fully configured', async () => {
+    const providers = await harness.json<{ handle: boolean; google: boolean }>(
+      '/api/auth/providers',
+    );
+    expect(providers.handle).toBe(true);
+    // The harness sets no Google credentials, so the button must not appear.
+    expect(providers.google).toBe(false);
+  });
+
+  it('does not expose the Google endpoints when it is not configured', async () => {
+    // Half-configured or unconfigured, the answer is the same: there is no
+    // such door, rather than a door that leads to an error.
+    for (const path of ['/api/auth/google/start', '/api/auth/google/callback?code=x&state=y']) {
+      const response = await harness.request(path);
+      expect(response.status).toBe(404);
+    }
   });
 });
 
@@ -617,5 +638,186 @@ describe('ingestion', () => {
     for (const candidate of candidates) {
       expect(candidate.status).not.toBe('PUBLISHED');
     }
+  });
+
+  it('reports what each cycle fetched and what it threw out', async () => {
+    const { runs } = await harness.json<{ runs: { connector: string; fetched: number }[] }>(
+      '/api/ingestion/runs',
+    );
+    expect(Array.isArray(runs)).toBe(true);
+
+    const { documents } = await harness.json<{ documents: unknown[] }>('/api/ingestion/rejected');
+    expect(Array.isArray(documents)).toBe(true);
+  });
+});
+
+/**
+ * Publishing from the queue.
+ *
+ * This is the only path from the automated half of the platform to the public
+ * board, so the tests here are about what it refuses: an unapproved candidate,
+ * a statement that fails the checklist, and a second attempt at something
+ * already published.
+ */
+describe('publishing a problem from a candidate', () => {
+  beforeAll(async () => {
+    // The offline connectors, so the queue has something in it. Same pipeline
+    // the live connectors go through; only the fetch step differs.
+    await runIngestion({
+      db: harness.db,
+      connectors: resolveConnectors(harness.db, {}),
+      trigger: 'SEED',
+    });
+  }, 60_000);
+
+  const statement = {
+    title: 'Night-time heat in Mediterranean cities is not covered by cooling-centre policy',
+    summary:
+      'Cooling centres close at night, when heat-related mortality in Mediterranean cities peaks.',
+    description:
+      'Heat-related mortality in southern European cities concentrates in the hours after midnight, when indoor temperatures in poorly insulated housing stay above outdoor temperatures. Municipal cooling-centre programmes in Barcelona, Athens and Naples operate during daytime hours only. The share of excess deaths occurring at night has been measured at over half in several city-level studies, but no evaluation exists of whether extending cooling-centre hours changes that share, and the cost of night operation has not been separated from the cost of daytime operation in any published programme budget.',
+    whyItMatters: [
+      {
+        text: 'Around 70000 excess deaths were attributed to the 2003 European heatwave, concentrated in urban areas at night.',
+        kind: 'SOURCE_CLAIM' as const,
+      },
+    ],
+    currentKnowledge: [],
+    constraints: {
+      budget: 'Municipal budgets, typically under 2 MEUR per city per season.',
+      time: 'Must be in place before the 2027 summer season.',
+      geography: 'Mediterranean cities above 300000 inhabitants.',
+      technology: null,
+      political: null,
+    },
+    successCriteria: [
+      {
+        metric: 'Share of heat-related excess deaths occurring between 22:00 and 06:00',
+        target: 'Reduced by 20%',
+        horizon: '2030',
+        measurement: 'City mortality registries',
+      },
+    ],
+    openQuestions: [
+      'Does extending cooling-centre hours change night-time mortality at all?',
+      'What share of the affected population can physically reach a centre at night?',
+    ],
+    geographyLabel: 'Mediterranean cities',
+    geographyScale: 'REGIONAL' as const,
+    countryCode: null,
+    difficulty: 6,
+    urgency: 8,
+    domains: ['health', 'cities'],
+  };
+
+  async function pendingCandidate(): Promise<{ id: string; sourceIds: string[] }> {
+    const { candidates } = await harness.json<{
+      candidates: { id: string; status: string; sources: { id: string }[] }[];
+    }>('/api/ingestion/candidates');
+    const candidate = candidates.find((entry) => entry.status === 'PENDING_CURATION');
+    if (!candidate) throw new Error('The seed produced no pending candidate');
+    return { id: candidate.id, sourceIds: candidate.sources.map((source) => source.id) };
+  }
+
+  it('refuses to publish a candidate no curator has approved', async () => {
+    const cookie = await harness.signIn('m-okonkwo');
+    const candidate = await pendingCandidate();
+
+    const response = await harness.request(
+      '/api/problems',
+      postJson({ ...statement, candidateId: candidate.id, sourceIds: candidate.sourceIds }, cookie),
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: 'FORBIDDEN' } });
+  });
+
+  it('refuses a statement that fails the publication checklist', async () => {
+    const cookie = await harness.signIn('m-okonkwo');
+    const candidate = await pendingCandidate();
+
+    await harness.request(
+      `/api/ingestion/candidates/${candidate.id}/curate`,
+      postJson({ decision: 'APPROVE', note: null }, cookie),
+    );
+
+    const response = await harness.request(
+      '/api/problems',
+      postJson(
+        {
+          ...statement,
+          candidateId: candidate.id,
+          sourceIds: candidate.sourceIds,
+          // No magnitude anywhere, and no measurable criterion.
+          whyItMatters: [{ text: 'This is bad for people in cities.', kind: 'SOURCE_CLAIM' }],
+          successCriteria: [{ metric: 'Things improve', target: 'a lot', horizon: 'soon' }],
+        },
+        cookie,
+      ),
+    );
+
+    expect(response.status).toBe(422);
+    const payload = (await response.json()) as { error: { details?: string[] } };
+    expect(payload.error.details?.join(' ')).toContain('quantified');
+  });
+
+  it('publishes an approved candidate that passes, once and only once', async () => {
+    const cookie = await harness.signIn('m-okonkwo');
+    const candidate = await pendingCandidate();
+
+    await harness.request(
+      `/api/ingestion/candidates/${candidate.id}/curate`,
+      postJson({ decision: 'APPROVE', note: 'Corroborated against the EEA assessment.' }, cookie),
+    );
+
+    const body = {
+      ...statement,
+      candidateId: candidate.id,
+      sourceIds: candidate.sourceIds,
+      whyItMatters: statement.whyItMatters.map((item) => ({
+        ...item,
+        sourceIds: candidate.sourceIds,
+      })),
+      // The checklist wants three distinct sources, at least one of high
+      // reliability. The candidate brought one; corroborating it is part of
+      // publishing it.
+      newSources: [
+        {
+          title: 'Heat-related mortality in Europe during the summer of 2022',
+          url: 'https://www.nature.com/articles/s41591-023-02419-z',
+          publisher: 'Nature Medicine',
+          sourceType: 'SCIENTIFIC_PAPER',
+          publicationDate: '2023-07-10',
+        },
+        {
+          title: 'Climate change: Heat and health',
+          url: 'https://www.who.int/news-room/fact-sheets/detail/climate-change-heat-and-health',
+          publisher: 'World Health Organization',
+          sourceType: 'INSTITUTION',
+          publicationDate: '2024-05-28',
+        },
+      ],
+    };
+
+    const response = await harness.request('/api/problems', postJson(body, cookie));
+    expect(response.status).toBe(201);
+
+    const published = (await response.json()) as { slug: string; ref: string };
+    expect(published.slug.length).toBeGreaterThan(0);
+
+    const detail = await harness.json<{ problem: { origin: string; title: string } }>(
+      `/api/problems/${published.slug}`,
+    );
+    expect(detail.problem.origin).toBe('INGESTED');
+    expect(detail.problem.title).toBe(statement.title);
+
+    // The candidate is spent: a second attempt must not create a twin.
+    const again = await harness.request('/api/problems', postJson(body, cookie));
+    expect(again.status).toBe(409);
+  });
+
+  it('refuses an anonymous publisher', async () => {
+    const response = await harness.request('/api/problems', postJson(statement));
+    expect(response.status).toBe(401);
   });
 });

@@ -15,7 +15,8 @@
     "@saveus/common": "workspace:*",
     "@saveus/db": "workspace:*",
     "zod": "^3.24.2",
-    "@anthropic-ai/sdk": "^0.39.0"
+    "@anthropic-ai/sdk": "^0.39.0",
+    "fast-xml-parser": "^4.5.1"
   },
   "devDependencies": {
     "typescript": "^5.7.3"

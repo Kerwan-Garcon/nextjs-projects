@@ -12,7 +12,13 @@ interface Identity {
   bio: string | null;
 }
 
-export function SignInForm({ identities }: { identities: Identity[] }) {
+export function SignInForm({
+  identities,
+  separator = false,
+}: {
+  identities: Identity[];
+  separator?: boolean;
+}) {
   const router = useRouter();
   const [mode, setMode] = useState<'existing' | 'new'>('existing');
   const [handle, setHandle] = useState('');
@@ -58,6 +64,16 @@ export function SignInForm({ identities }: { identities: Identity[] }) {
   }
 
   return (
+    <>
+      {separator ? (
+        <div className="mt-7 flex items-center gap-3">
+          <span className="h-px flex-1 bg-line" />
+          <span className="mono text-[9.5px] uppercase tracking-[0.14em] text-ink-dim">
+            or with a handle
+          </span>
+          <span className="h-px flex-1 bg-line" />
+        </div>
+      ) : null}
     <div className="mt-8 space-y-6">
       <div className="flex gap-2">
         {(
@@ -162,5 +178,6 @@ export function SignInForm({ identities }: { identities: Identity[] }) {
         </div>
       ) : null}
     </div>
+    </>
   );
 }

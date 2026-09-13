@@ -4,7 +4,7 @@ import { DeterministicProvider, type AIProvider } from './provider/index.js';
 import { CorpusSearchProvider, ProblemScopedSearchProvider } from './search/corpus.js';
 import { runResearchPipeline } from './pipeline.js';
 import { runIngestion } from './ingestion/pipeline.js';
-import { DEFAULT_CONNECTORS } from './ingestion/connectors/mock.js';
+import { resolveConnectors } from './ingestion/registry.js';
 
 /**
  * Research seeding.
@@ -89,7 +89,7 @@ export async function seedDemoResearch(
     summary.findings += result.runs.reduce((total, run) => total + run.findings.length, 0);
   }
 
-  const ingestion = await runIngestion({ db, connectors: DEFAULT_CONNECTORS });
+  const ingestion = await runIngestion({ db, connectors: resolveConnectors(db), trigger: 'SEED' });
   summary.candidates = ingestion.reduce((total, stat) => total + stat.candidates, 0);
 
   return summary;

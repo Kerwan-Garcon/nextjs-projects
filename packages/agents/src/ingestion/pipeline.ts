@@ -1,13 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import {
+  assessIntake,
   checkUrl,
   dedupeSources,
   evaluateProblemCandidate,
   hostOf,
+  GAP_PATTERNS,
   normalizeSource,
   sanitizeUntrusted,
   sha256Hex,
   type DomainKey,
+  type IntakeAssessment,
+  type IntakeRejection,
   type NormalizedSource,
 } from '@saveus/common';
 import { json, type Db } from '@saveus/db';
@@ -16,68 +20,79 @@ import type { RawDocument, SourceConnector } from './connector.js';
 /**
  * Ingestion pipeline.
  *
- *   FETCH -> NORMALIZE -> DEDUPLICATE -> CLASSIFY -> EXTRACT CLAIMS
- *         -> IDENTIFY OPEN PROBLEMS -> GENERATE CANDIDATE -> CURATE -> (human) PUBLISH
+ *   FETCH -> NORMALIZE -> DEDUPLICATE -> ASSESS RELEVANCE -> CLASSIFY
+ *         -> EXTRACT CLAIMS -> IDENTIFY OPEN PROBLEMS -> GENERATE CANDIDATE
+ *         -> CURATE -> (human) PUBLISH
  *
- * The last arrow is the important one. Nothing here publishes: the pipeline
- * produces candidates with a checklist attached, and a human curator decides.
- * `publishCandidate` refuses a candidate that has not been approved by a person.
+ * Two rules shape the whole thing.
+ *
+ * Nothing here publishes. The pipeline produces candidates with a checklist
+ * attached, and a human curator decides.
+ *
+ * And the relevance gate runs before anything is written, because the way an
+ * automated problem feed fails is not by fetching too little - it is by filling
+ * the board with announcements that look like problems. Everything fetched is
+ * kept with the verdict it received, so the filter can be tuned against what it
+ * actually discarded rather than against a guess.
+ *
+ * Only ACCEPT reaches the human queue. WEAK is recorded in full, with its score
+ * and the signals that fired, and is visible in the intake health panel - but a
+ * curator's queue is a scarce resource and filling it with things the gate
+ * itself already doubts is how it stops being read.
  */
+
+/**
+ * The most candidates one connector may add to the curation queue in a cycle.
+ * A day's literature can be large; a curator's attention cannot. When more pass
+ * the gate than this, the highest-scoring ones are queued and the rest are kept
+ * as assessed documents for the next cycle to reconsider.
+ */
+export const MAX_CANDIDATES_PER_RUN = 10;
 
 export interface IngestionStats {
   connector: string;
+  runId: string;
   fetched: number;
-  rejected: { externalId: string; reason: string }[];
+  accepted: number;
+  weak: number;
+  rejected: number;
   duplicates: number;
   candidates: number;
+  /** Passed the gate but over the per-run cap; left for the next cycle. */
+  deferred: number;
   flagged: number;
+  rejectionReasons: Record<string, number>;
+  errors: { externalId: string; reason: string }[];
 }
 
 const DOMAIN_KEYWORDS: Readonly<Record<DomainKey, readonly string[]>> = Object.freeze({
-  climate: ['climate', 'warming', 'emission', 'carbon', 'greenhouse', 'adaptation'],
+  climate: ['climate', 'warming', 'emission', 'carbon', 'greenhouse', 'adaptation', 'heatwave'],
   energy: ['energy', 'electricity', 'grid', 'power', 'renewable', 'nuclear', 'storage', 'hydrogen'],
   water: ['water', 'drinking', 'sanitation', 'basin', 'aquifer', 'drought', 'groundwater'],
   food: ['food', 'agriculture', 'crop', 'harvest', 'nutrition', 'soil', 'farming', 'fisheries'],
-  biodiversity: [
-    'biodiversity',
-    'species',
-    'ecosystem',
-    'forest',
-    'invasive',
-    'habitat',
-    'pollinator',
-  ],
-  health: ['health', 'mortality', 'disease', 'antimicrobial', 'patient', 'hospital', 'epidemi'],
+  biodiversity: ['biodiversity', 'species', 'ecosystem', 'forest', 'invasive', 'habitat', 'pollinator'],
+  health: ['health', 'mortality', 'disease', 'antimicrobial', 'patient', 'hospital', 'epidemi', 'clinical'],
   materials: ['material', 'cement', 'steel', 'mineral', 'recycling', 'concrete', 'battery'],
   cities: ['city', 'cities', 'urban', 'housing', 'building', 'municipal', 'neighbourhood'],
   transport: ['transport', 'mobility', 'vehicle', 'shipping', 'aviation', 'freight', 'road'],
-  ai: [
-    'artificial intelligence',
-    'machine learning',
-    'model',
-    'algorithm',
-    'data centre',
-    'compute',
-  ],
+  ai: ['artificial intelligence', 'machine learning', 'algorithm', 'data centre', 'compute', 'neural'],
   other: [],
 });
 
-/** Signals that a document reports an unresolved gap rather than a finished result. */
-const OPEN_PROBLEM_MARKERS: readonly RegExp[] = [
-  /\bnot (?:yet )?(?:resolved|settled|established|separated|captured)\b/i,
-  /\bremains? (?:unresolved|open|unclear|unknown)\b/i,
-  /\bopen gap\b/i,
-  /\bis not (?:known|quantified|understood)\b/i,
-  /\bunevenly\b/i,
-];
+/**
+ * A sentence states a gap if it uses the same language the intake gate looks
+ * for. One definition, shared: a gate that admits a document and an extractor
+ * that then finds nothing quotable in it disagree about what a gap is, and the
+ * document is lost between them.
+ */
+function statesGap(sentence: string): boolean {
+  return GAP_PATTERNS.some((entry) => entry.pattern.test(sentence));
+}
 
 export function classifyDomains(document: RawDocument): DomainKey[] {
   const haystack = `${document.title} ${document.body}`.toLowerCase();
   const scored = (Object.entries(DOMAIN_KEYWORDS) as [DomainKey, readonly string[]][])
-    .map(
-      ([key, keywords]) =>
-        [key, keywords.filter((word) => haystack.includes(word)).length] as const,
-    )
+    .map(([key, keywords]) => [key, keywords.filter((word) => haystack.includes(word)).length] as const)
     .filter(([, score]) => score > 0)
     .sort((a, b) => b[1] - a[1])
     .map(([key]) => key);
@@ -104,12 +119,10 @@ export function extractClaims(document: RawDocument, sourceId: string): Extracte
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter((sentence) => sentence.length >= 40)
-    .slice(0, 8)
+    .slice(0, 10)
     .map((sentence) => ({
       text: sentence,
-      epistemicKind: OPEN_PROBLEM_MARKERS.some((pattern) => pattern.test(sentence))
-        ? ('UNKNOWN' as const)
-        : ('SOURCE_CLAIM' as const),
+      epistemicKind: statesGap(sentence) ? ('UNKNOWN' as const) : ('SOURCE_CLAIM' as const),
       sourceIds: [sourceId],
     }));
 }
@@ -155,9 +168,7 @@ export function generateCandidateDraft(
       '',
       'This text was produced by the ingestion pipeline. It is not a problem statement yet: a human curator must write the factual description, the quantified consequences, the constraints and the success criteria before this can be published.',
     ].join('\n'),
-    whyItMatters: gaps
-      .slice(0, 3)
-      .map((claim) => ({ text: claim.text, sourceIds: claim.sourceIds })),
+    whyItMatters: gaps.slice(0, 3).map((claim) => ({ text: claim.text, sourceIds: claim.sourceIds })),
     openQuestions: gaps.map((claim) => claim.text).slice(0, 5),
     // Deliberately empty: the pipeline does not invent constraints or targets.
     constraints: { budget: null, time: null, geography: null, technology: null, political: null },
@@ -168,178 +179,351 @@ export function generateCandidateDraft(
 export interface RunIngestionInput {
   db: Db;
   connectors: readonly SourceConnector[];
+  trigger?: 'MANUAL' | 'SCHEDULED' | 'SEED';
+  now?: Date;
 }
 
 export async function runIngestion(input: RunIngestionInput): Promise<IngestionStats[]> {
   const stats: IngestionStats[] = [];
+  // Titles already on the board or in the queue, for near-duplicate rejection.
+  const existingTitles = await loadExistingTitles(input.db);
 
   for (const connector of input.connectors) {
+    const runId = randomUUID();
     const stat: IngestionStats = {
       connector: connector.name,
+      runId,
       fetched: 0,
-      rejected: [],
+      accepted: 0,
+      weak: 0,
+      rejected: 0,
       duplicates: 0,
       candidates: 0,
+      deferred: 0,
       flagged: 0,
+      rejectionReasons: {},
+      errors: [],
     };
 
-    // FETCH
-    const documents = await connector.fetch();
-    stat.fetched = documents.length;
+    await input.db
+      .insertInto('ingestion_runs')
+      .values({
+        id: runId,
+        connector: connector.name,
+        trigger: input.trigger ?? 'MANUAL',
+        rejection_reasons: json({}),
+      })
+      .execute();
 
-    // NORMALIZE (+ host allowlist: a connector may not smuggle in other hosts)
-    const normalized: { document: RawDocument; source: NormalizedSource }[] = [];
-    for (const document of documents) {
-      const urlCheck = checkUrl(document.url);
-      if (!urlCheck.ok) {
-        stat.rejected.push({ externalId: document.externalId, reason: urlCheck.reason });
-        continue;
+    try {
+      // FETCH
+      const documents = await connector.fetch();
+      stat.fetched = documents.length;
+
+      // NORMALIZE (+ host allowlist: a connector may not smuggle in other hosts)
+      const normalized: { document: RawDocument; source: NormalizedSource }[] = [];
+      for (const document of documents) {
+        const urlCheck = checkUrl(document.url);
+        if (!urlCheck.ok) {
+          stat.errors.push({ externalId: document.externalId, reason: urlCheck.reason });
+          continue;
+        }
+        const host = hostOf(document.url);
+        if (!connector.allowedHosts.some((allowed) => host === allowed || host.endsWith(`.${allowed}`))) {
+          stat.errors.push({ externalId: document.externalId, reason: `HOST_NOT_ALLOWED:${host}` });
+          continue;
+        }
+        const result = normalizeSource({
+          title: document.title,
+          url: document.url,
+          publisher: document.publisher,
+          publicationDate: document.publishedAt,
+          abstract: document.body,
+        });
+        if (!result.ok) {
+          stat.errors.push({ externalId: document.externalId, reason: result.reason });
+          continue;
+        }
+        if (result.source.flags.length > 0) stat.flagged += 1;
+        normalized.push({ document, source: result.source });
       }
-      const host = hostOf(document.url);
-      if (
-        !connector.allowedHosts.some((allowed) => host === allowed || host.endsWith(`.${allowed}`))
-      ) {
-        stat.rejected.push({ externalId: document.externalId, reason: `HOST_NOT_ALLOWED:${host}` });
-        continue;
-      }
-      const result = normalizeSource({
-        title: document.title,
-        url: document.url,
-        publisher: document.publisher,
-        publicationDate: document.publishedAt,
-        abstract: document.body,
-      });
-      if (!result.ok) {
-        stat.rejected.push({ externalId: document.externalId, reason: result.reason });
-        continue;
-      }
-      if (result.source.flags.length > 0) stat.flagged += 1;
-      normalized.push({ document, source: result.source });
-    }
 
-    // DEDUPLICATE (within the batch, then against what is already stored)
-    const { unique, duplicates } = dedupeSources(normalized.map((entry) => entry.source));
-    stat.duplicates = duplicates.length;
-    const uniqueHashes = new Set(unique.map((source) => source.contentHash));
+      // DEDUPLICATE within the batch
+      const { unique, duplicates } = dedupeSources(normalized.map((entry) => entry.source));
+      stat.duplicates = duplicates.length;
+      const uniqueHashes = new Set(unique.map((source) => source.contentHash));
 
-    for (const { document, source } of normalized) {
-      if (!uniqueHashes.has(source.contentHash)) continue;
+      // ASSESS RELEVANCE - the gate. Everything fetched is recorded with its
+      // verdict, so the filter can be tuned against what it actually threw out.
+      // Assessment is separated from queueing because the queue is capped: the
+      // cap has to keep the best of the batch, which is not knowable until the
+      // whole batch has been scored.
+      const passed: { document: RawDocument; source: NormalizedSource; rawId: string; domains: DomainKey[]; assessment: IntakeAssessment }[] = [];
 
-      const bodyResult = sanitizeUntrusted(document.body, 8000);
-      const existingRaw = await input.db
-        .selectFrom('raw_documents')
-        .where('connector', '=', connector.name)
-        .where('external_id', '=', document.externalId)
-        .select('id')
-        .executeTakeFirst();
+      for (const { document, source } of normalized) {
+        if (!uniqueHashes.has(source.contentHash)) continue;
 
-      let rawId = existingRaw?.id;
-      if (!rawId) {
-        rawId = randomUUID();
-        await input.db
-          .insertInto('raw_documents')
-          .values({
-            id: rawId,
-            connector: connector.name,
-            external_id: document.externalId,
-            title: source.title,
+        // CLASSIFY (needed by the relevance gate)
+        const domains = classifyDomains(document);
+
+        const assessment = assessIntake(
+          {
+            title: document.title,
+            body: document.body,
+            publisher: source.publisher,
             url: source.canonicalUrl,
-            publisher: source.publisher,
-            published_at: document.publishedAt,
-            body: bodyResult.text,
-            content_hash: sha256Hex(bodyResult.text),
-            flags: [...new Set([...source.flags, ...bodyResult.flags])],
-          })
-          .execute();
-      }
-
-      // Store or reuse the source record.
-      // Same identity rule as the API: canonical URL first, content hash
-      // second. A connector re-titling a document must not create a second row.
-      const existingSource = await input.db
-        .selectFrom('sources')
-        .where((eb) =>
-          eb.or([
-            eb('content_hash', '=', source.contentHash),
-            eb('canonical_url', '=', source.canonicalUrl),
-          ]),
-        )
-        .select('id')
-        .executeTakeFirst();
-
-      let sourceId = existingSource?.id;
-      if (!sourceId) {
-        sourceId = randomUUID();
-        await input.db
-          .insertInto('sources')
-          .values({
-            id: sourceId,
-            title: source.title,
-            authors: source.authors,
-            publisher: source.publisher,
-            publication_date: source.publicationDate,
-            url: source.url,
-            canonical_url: source.canonicalUrl,
-            source_type: source.sourceType,
-            domain: source.domain,
+            publishedAt: document.publishedAt,
+          },
+          {
             reliability: source.reliability,
-            reliability_note: source.reliabilityNote,
-            content_hash: source.contentHash,
-            origin: 'INGESTED',
-            flags: source.flags,
-          })
-          .execute();
+            existingTitles,
+            domains,
+            ...(input.now ? { now: input.now } : {}),
+          },
+        );
+
+        const rawId = await storeRawDocument(input.db, connector.name, runId, document, source, assessment);
+
+        if (assessment.verdict === 'REJECT') {
+          stat.rejected += 1;
+          countRejection(stat, assessment.code ?? 'BELOW_FLOOR');
+          continue;
+        }
+        if (assessment.verdict === 'WEAK') {
+          // Recorded, visible in the health panel, not queued.
+          stat.weak += 1;
+          continue;
+        }
+
+        stat.accepted += 1;
+        passed.push({ document, source, rawId, domains, assessment });
       }
 
-      // CLASSIFY -> EXTRACT CLAIMS -> IDENTIFY OPEN PROBLEMS
-      const domains = classifyDomains(document);
-      const claims = extractClaims(document, sourceId);
-      if (!identifiesOpenProblem(claims)) continue;
+      // Best first, so the cap keeps the strongest rather than the earliest.
+      passed.sort((a, b) => b.assessment.score - a.assessment.score);
 
-      // GENERATE CANDIDATE
-      const draft = generateCandidateDraft(document, claims);
+      for (const entry of passed) {
+        if (stat.candidates >= MAX_CANDIDATES_PER_RUN) {
+          stat.deferred += 1;
+          continue;
+        }
 
-      // CURATE (checklist only - this decides eligibility, never publication)
-      const report = evaluateProblemCandidate({
-        ...draft,
-        domains,
-        sources: [{ id: sourceId, reliability: source.reliability, sourceType: source.sourceType }],
-      });
+        const { document, source, rawId, domains, assessment } = entry;
 
-      const existingCandidate = await input.db
-        .selectFrom('problem_candidates')
-        .where('connector', '=', connector.name)
-        .where('title', '=', draft.title)
-        .select('id')
-        .executeTakeFirst();
-      if (existingCandidate) continue;
+        // Store or reuse the source record.
+        const sourceId = await ensureSourceRow(input.db, source);
+
+        // EXTRACT CLAIMS -> IDENTIFY OPEN PROBLEMS
+        const claims = extractClaims(document, sourceId);
+        if (!identifiesOpenProblem(claims)) {
+          // The gate scores the document as a whole; this asks for a specific
+          // sentence to quote. A candidate with no quotable gap is not one.
+          stat.accepted -= 1;
+          stat.rejected += 1;
+          countRejection(stat, 'NO_SENTENCE_LEVEL_GAP');
+          await input.db
+            .updateTable('raw_documents')
+            .set({
+              intake_verdict: 'REJECT',
+              intake_code: 'NO_SENTENCE_LEVEL_GAP',
+              intake_reasons: ['Relevance passed, but no individual sentence states a gap'],
+            })
+            .where('id', '=', rawId)
+            .execute();
+          continue;
+        }
+
+        // GENERATE CANDIDATE
+        const draft = generateCandidateDraft(document, claims);
+
+        // CURATE (checklist only - eligibility, never publication)
+        const report = evaluateProblemCandidate({
+          ...draft,
+          domains,
+          sources: [{ id: sourceId, reliability: source.reliability, sourceType: source.sourceType }],
+        });
+
+        const existingCandidate = await input.db
+          .selectFrom('problem_candidates')
+          .where('connector', '=', connector.name)
+          .where('title', '=', draft.title)
+          .select('id')
+          .executeTakeFirst();
+        if (existingCandidate) {
+          stat.accepted -= 1;
+          stat.duplicates += 1;
+          continue;
+        }
+
+        await input.db
+          .insertInto('problem_candidates')
+          .values({
+            id: randomUUID(),
+            connector: connector.name,
+            raw_document_id: rawId,
+            title: draft.title,
+            summary: draft.summary.slice(0, 400),
+            draft: json(draft),
+            proposed_domains: domains,
+            extracted_claims: json(claims),
+            source_ids: [sourceId],
+            status: 'PENDING_CURATION',
+            curation_score: report.score,
+            relevance_score: assessment.score,
+            assessment: json(assessment),
+            blocking: report.blocking,
+            warnings: report.warnings,
+          })
+          .execute();
+
+        stat.candidates += 1;
+        // A newly queued candidate is itself a duplicate target for the rest of
+        // this cycle and for every cycle after it.
+        existingTitles.push(draft.title);
+      }
 
       await input.db
-        .insertInto('problem_candidates')
-        .values({
-          id: randomUUID(),
-          connector: connector.name,
-          raw_document_id: rawId,
-          title: draft.title,
-          summary: draft.summary.slice(0, 400),
-          draft: json(draft),
-          proposed_domains: domains,
-          extracted_claims: json(claims),
-          source_ids: [sourceId],
-          status: 'PENDING_CURATION',
-          curation_score: report.score,
-          blocking: report.blocking,
-          warnings: report.warnings,
+        .updateTable('ingestion_runs')
+        .set({
+          finished_at: new Date(),
+          fetched: stat.fetched,
+          accepted: stat.accepted,
+          weak: stat.weak,
+          rejected: stat.rejected,
+          duplicates: stat.duplicates,
+          candidates: stat.candidates,
+          deferred: stat.deferred,
+          flagged: stat.flagged,
+          rejection_reasons: json(stat.rejectionReasons),
         })
+        .where('id', '=', runId)
         .execute();
-
-      stat.candidates += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      stat.errors.push({ externalId: 'connector', reason: message });
+      await input.db
+        .updateTable('ingestion_runs')
+        .set({ finished_at: new Date(), error: message.slice(0, 500) })
+        .where('id', '=', runId)
+        .execute();
     }
 
     stats.push(stat);
   }
 
   return stats;
+}
+
+async function loadExistingTitles(db: Db): Promise<string[]> {
+  const [problems, candidates] = await Promise.all([
+    db.selectFrom('problems').select('title').execute(),
+    db.selectFrom('problem_candidates').select('title').execute(),
+  ]);
+  return [...problems.map((row) => row.title), ...candidates.map((row) => row.title)];
+}
+
+async function storeRawDocument(
+  db: Db,
+  connector: string,
+  runId: string,
+  document: RawDocument,
+  source: NormalizedSource,
+  assessment: IntakeAssessment,
+): Promise<string> {
+  const bodyResult = sanitizeUntrusted(document.body, 8000);
+  const existing = await db
+    .selectFrom('raw_documents')
+    .where('connector', '=', connector)
+    .where('external_id', '=', document.externalId)
+    .select('id')
+    .executeTakeFirst();
+
+  if (existing) {
+    await db
+      .updateTable('raw_documents')
+      .set({
+        intake_verdict: assessment.verdict,
+        intake_score: assessment.score,
+        intake_code: assessment.code,
+        intake_reasons: assessment.reasons,
+        intake_matched: assessment.matched,
+        ingestion_run_id: runId,
+        fetched_at: new Date(),
+      })
+      .where('id', '=', existing.id)
+      .execute();
+    return existing.id;
+  }
+
+  const id = randomUUID();
+  await db
+    .insertInto('raw_documents')
+    .values({
+      id,
+      connector,
+      external_id: document.externalId,
+      title: source.title,
+      url: source.canonicalUrl,
+      publisher: source.publisher,
+      published_at: document.publishedAt,
+      body: bodyResult.text,
+      content_hash: sha256Hex(bodyResult.text),
+      flags: [...new Set([...source.flags, ...bodyResult.flags])],
+      intake_verdict: assessment.verdict,
+      intake_score: assessment.score,
+      intake_code: assessment.code,
+      intake_reasons: assessment.reasons,
+      intake_matched: assessment.matched,
+      ingestion_run_id: runId,
+    })
+    .execute();
+  return id;
+}
+
+async function ensureSourceRow(db: Db, source: NormalizedSource): Promise<string> {
+  // Same identity rule as the API: canonical URL first, content hash second.
+  const existing = await db
+    .selectFrom('sources')
+    .where((eb) =>
+      eb.or([
+        eb('content_hash', '=', source.contentHash),
+        eb('canonical_url', '=', source.canonicalUrl),
+      ]),
+    )
+    .select('id')
+    .executeTakeFirst();
+  if (existing) return existing.id;
+
+  const id = randomUUID();
+  await db
+    .insertInto('sources')
+    .values({
+      id,
+      title: source.title,
+      authors: source.authors,
+      publisher: source.publisher,
+      publication_date: source.publicationDate,
+      url: source.url,
+      canonical_url: source.canonicalUrl,
+      source_type: source.sourceType,
+      domain: source.domain,
+      reliability: source.reliability,
+      reliability_note: source.reliabilityNote,
+      content_hash: source.contentHash,
+      origin: 'INGESTED',
+      flags: source.flags,
+    })
+    .execute();
+  return id;
+}
+
+/**
+ * The histogram counts stable codes, not sentences. The human-readable reason
+ * carries a threshold or a character count, and tallying those would split one
+ * cause across a dozen rows.
+ */
+function countRejection(stat: IngestionStats, code: IntakeRejection): void {
+  stat.rejectionReasons[code] = (stat.rejectionReasons[code] ?? 0) + 1;
 }
 
 /**
@@ -357,12 +541,7 @@ export type CurationOutcome =
 
 export async function curateCandidate(
   db: Db,
-  input: {
-    candidateId: string;
-    curatorId: string;
-    decision: 'APPROVE' | 'REJECT';
-    note?: string | null;
-  },
+  input: { candidateId: string; curatorId: string; decision: 'APPROVE' | 'REJECT'; note?: string | null },
 ): Promise<CurationOutcome> {
   const candidate = await db
     .selectFrom('problem_candidates')
@@ -379,12 +558,12 @@ export async function curateCandidate(
     };
   }
 
-  if (input.decision === 'APPROVE' && candidate.blocking.length > 0) {
+  if (candidate.status === 'PUBLISHED') {
     return {
       status: 'BLOCKED',
       candidateId: candidate.id,
-      blocking: candidate.blocking,
-      reason: 'The candidate still fails blocking publication checks.',
+      blocking: [],
+      reason: 'This candidate has already been published as a problem.',
     };
   }
 
