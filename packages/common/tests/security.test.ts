@@ -81,3 +81,35 @@ describe('rate limiting', () => {
     expect(RATE_LIMITS.write.limit).toBeLessThan(RATE_LIMITS.read.limit);
   });
 });
+
+describe('the in-memory rate limiter', () => {
+  it('allows exactly the limit inside one window', async () => {
+    const limiter = new MemoryRateLimiter();
+    expect((await limiter.check('k', 2, 60_000)).allowed).toBe(true);
+    expect((await limiter.check('k', 2, 60_000)).allowed).toBe(true);
+    expect((await limiter.check('k', 2, 60_000)).allowed).toBe(false);
+  });
+
+  it('refuses the first request when the limit is zero', () => {
+    // The fresh-window branch used to return `allowed: true` before looking at
+    // the limit, so a limit of zero let one request through every window.
+    return expect(new MemoryRateLimiter().check('k', 0, 60_000)).resolves.toMatchObject({
+      allowed: false,
+      remaining: 0,
+    });
+  });
+
+  it('never reports a negative remaining', async () => {
+    const limiter = new MemoryRateLimiter();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect((await limiter.check('k', 1, 60_000)).remaining).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('opens a new window after the old one lapses', async () => {
+    const limiter = new MemoryRateLimiter();
+    expect((await limiter.check('k', 1, 1)).allowed).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect((await limiter.check('k', 1, 1)).allowed).toBe(true);
+  });
+});

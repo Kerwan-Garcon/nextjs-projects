@@ -46,8 +46,22 @@ export class AnthropicProvider implements AIProvider {
   readonly model: string;
   private readonly client: Anthropic;
 
-  constructor(options: { apiKey: string; model?: string }) {
-    this.client = new Anthropic({ apiKey: options.apiKey });
+  constructor(options: {
+    apiKey: string;
+    model?: string;
+    maxRetries?: number;
+    timeoutMs?: number;
+  }) {
+    this.client = new Anthropic({
+      apiKey: options.apiKey,
+      // The API rate-limits, and an agent run that dies on the first 429 loses
+      // the whole pipeline for a transient answer. The SDK backs off
+      // exponentially and honours the `retry-after` header it is given, which
+      // is the same courtesy this platform demands of itself when it fetches
+      // publishers. Bounded, so a sustained outage fails rather than hangs.
+      maxRetries: options.maxRetries ?? Number(process.env.ANTHROPIC_MAX_RETRIES ?? 4),
+      timeout: options.timeoutMs ?? Number(process.env.ANTHROPIC_TIMEOUT_MS ?? 120_000),
+    });
     this.model = options.model ?? DEFAULT_MODEL;
   }
 

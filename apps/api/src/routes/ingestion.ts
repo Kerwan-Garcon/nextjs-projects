@@ -168,6 +168,7 @@ export function ingestionRoutes() {
       throw new AppError(
         'RATE_LIMITED',
         'Intake cycles are limited to 3 per 10 minutes. Fetching other people’s servers is not free for them.',
+        { retryAfterSeconds: Math.max(1, Math.ceil((decision.resetAt - Date.now()) / 1000)) },
       );
     }
 

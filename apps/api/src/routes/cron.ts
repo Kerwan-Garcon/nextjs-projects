@@ -3,6 +3,7 @@ import { runIngestionCycle, resolveConnectors, isLiveIntakeEnabled } from '@save
 import { AppError, resolveScheduleHour, shouldRunDaily, timingSafeEqualString } from '@saveus/common';
 import { lastScheduledIngestion } from '@saveus/db';
 import type { ApiEnv } from '../app.js';
+import type { AppContext } from '../context.js';
 
 /**
  * Scheduled work, as HTTP.
@@ -55,6 +56,10 @@ export function cronRoutes() {
       });
     }
 
+    // Housekeeping, on the one call a day that is already expected to be slow
+    // rather than on the request path where it would cost every visitor.
+    const swept = await sweepExpired(db);
+
     const budgetMs = Number(process.env.INTAKE_BUDGET_MS ?? DEFAULT_BUDGET_MS);
     const startedAt = Date.now();
 
@@ -69,6 +74,7 @@ export function cronRoutes() {
       ran: true,
       live: isLiveIntakeEnabled(),
       elapsedMs: Date.now() - startedAt,
+      swept,
       // Connectors are independent, so whatever the budget did not reach is
       // simply first in line tomorrow.
       skipped,
@@ -88,4 +94,24 @@ export function cronRoutes() {
   });
 
   return routes;
+}
+
+/**
+ * Drop lapsed rate-limit windows and host cooldowns.
+ *
+ * Neither grows with traffic - rate-limit keys are bounded by users and
+ * addresses, cooldowns by hosts we fetch - so this is tidiness rather than a
+ * necessity. It runs here because the daily call is already the slow one.
+ */
+async function sweepExpired(db: AppContext['db']): Promise<{ windows: number; cooldowns: number }> {
+  const now = new Date();
+  const [windows, cooldowns] = await Promise.all([
+    db.deleteFrom('rate_limits').where('expires_at', '<', now).executeTakeFirst(),
+    db.deleteFrom('host_cooldowns').where('until', '<', now).executeTakeFirst(),
+  ]);
+
+  return {
+    windows: Number(windows.numDeletedRows ?? 0),
+    cooldowns: Number(cooldowns.numDeletedRows ?? 0),
+  };
 }

@@ -71,6 +71,7 @@ export function researchRoutes() {
         throw new AppError(
           'RATE_LIMITED',
           `Agent runs are limited to ${decision.limit} per minute. This one costs compute; queue it again shortly.`,
+          { retryAfterSeconds: Math.max(1, Math.ceil((decision.resetAt - Date.now()) / 1000)) },
         );
       }
 

@@ -51,6 +51,9 @@ REAL WORLD PROBLEM → EVIDENCE → HUMAN HYPOTHESES → DISCUSSION
   a document reaches a human, and records the verdict on everything it refused.
 - **Volume is not a path to standing.** A contribution's reputation award is
   damped by how much the same author has already posted on the same problem.
+- **A publisher who says "wait" is not asked again.** `Retry-After` puts the
+  whole host on a cooldown that survives the process, so a refusal from one
+  endpoint stops the requests queued behind it and the next day's cycle too.
 
 ### What is real and what is DEMO DATA
 
@@ -347,7 +350,9 @@ highest-scoring first; the rest wait for the next cycle.
 `HttpFetcher` is deliberately conservative: one request at a time per host with
 a minimum gap, a User-Agent naming the project and a contact address,
 conditional requests so an unchanged feed costs a 304, `Retry-After` honoured
-rather than hammered through, a response size cap, a content-type check, and the
+**and remembered** — the host goes on a cooldown, stored in the database, that
+the next request checks before opening a socket, so a publisher who said wait is
+not asked again by the seven other URLs on that host or by tomorrow's cycle — a response size cap, a content-type check, and the
 same SSRF guard used everywhere else re-applied after **every** redirect rather
 than trusted once.
 
@@ -465,8 +470,8 @@ confidence, its sources, its reasoning and what it could not resolve.
 
 3. Use `HttpFetcher` rather than `fetch`. It applies the SSRF guard on every
    redirect hop, serialises requests per host with a minimum interval, sends
-   conditional requests, honours `Retry-After`, caps the response size and
-   checks the content type.
+   conditional requests, honours and remembers `Retry-After` as a per-host
+   cooldown, caps the response size and checks the content type.
 
 Nothing else changes. The pipeline normalises, deduplicates, runs the relevance
 gate, classifies, extracts claims, drafts a candidate and scores it against the

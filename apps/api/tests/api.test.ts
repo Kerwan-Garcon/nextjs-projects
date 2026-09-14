@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { MemoryRateLimiter, RATE_LIMITS } from '@saveus/common';
 import { resolveConnectors, runIngestion, runIngestionCycle } from '@saveus/agents';
 import { createHarness, postJson, withCookie, type Harness } from './helpers.js';
 
@@ -666,6 +667,58 @@ describe('ingestion', () => {
  * has to be at least as careful as the worker was: unauthenticated callers get
  * nothing, and it will not run twice in a day.
  */
+describe('rate limiting, end to end', () => {
+  it('tells every response where it stands', async () => {
+    const response = await harness.request('/api/meta');
+    expect(response.headers.get('RateLimit-Limit')).toBe(String(RATE_LIMITS.read.limit));
+    expect(Number(response.headers.get('RateLimit-Remaining'))).toBeGreaterThanOrEqual(0);
+    expect(Number(response.headers.get('RateLimit-Reset'))).toBeGreaterThan(0);
+  });
+
+  it('refuses past the limit, and says when to come back', async () => {
+    // A limiter of its own, so the shared one is not spent on this.
+    const strict = new MemoryRateLimiter();
+    const tight = harness.withLimiter({
+      check: async (key, _limit, windowMs) => strict.check(key, 2, windowMs),
+    });
+
+    expect((await tight.request('/api/meta')).status).toBe(200);
+    expect((await tight.request('/api/meta')).status).toBe(200);
+
+    const refused = await tight.request('/api/meta');
+    expect(refused.status).toBe(429);
+    expect(Number(refused.headers.get('Retry-After'))).toBeGreaterThan(0);
+    expect(refused.headers.get('RateLimit-Remaining')).toBe('0');
+    expect(await refused.json()).toMatchObject({ error: { code: 'RATE_LIMITED' } });
+  });
+
+  it('carries Retry-After on a write refusal too', async () => {
+    const strict = new MemoryRateLimiter();
+    const tight = harness.withLimiter({
+      // Reads stay generous so the request reaches the write limit at all.
+      check: async (key, limit, windowMs) =>
+        strict.check(key, key.startsWith('write:') ? 0 : limit, windowMs),
+    });
+
+    const cookie = await harness.signIn('a-devi');
+    const response = await tight.request(
+      '/api/contributions',
+      postJson(
+        {
+          kind: 'COMMENT',
+          targetType: 'HYPOTHESIS',
+          targetId: hypothesisId,
+          body: 'A comment long enough to pass validation and reach the write limiter behind it.',
+        },
+        cookie,
+      ),
+    );
+
+    expect(response.status).toBe(429);
+    expect(Number(response.headers.get('Retry-After'))).toBeGreaterThan(0);
+  });
+});
+
 describe('scheduled intake over HTTP', () => {
   const SECRET = 'a-secret-long-enough-to-pass';
 

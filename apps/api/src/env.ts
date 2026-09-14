@@ -32,6 +32,13 @@ const EnvSchema = z.object({
    * platform fetch other people's servers on demand.
    */
   CRON_SECRET: z.string().min(16).optional(),
+  /**
+   * Where rate-limit counters live. Postgres by default, because a counter in
+   * process memory is not a limit on any deployment with more than one process.
+   * Only set this to `memory` for a single-process server that wants to avoid
+   * the round trip.
+   */
+  RATE_LIMIT_DRIVER: z.enum(['postgres', 'memory']).optional(),
 });
 
 export type AppEnv = z.infer<typeof EnvSchema>;

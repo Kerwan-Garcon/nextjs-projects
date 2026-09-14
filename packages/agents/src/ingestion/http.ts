@@ -10,7 +10,10 @@ import { checkUrl, hostOf } from '@saveus/common';
  * - a real User-Agent naming the project and a contact address;
  * - conditional requests (ETag / Last-Modified), so an unchanged feed costs the
  *   publisher a 304 and costs us nothing;
- * - `Retry-After` honoured on 429 and 503 rather than hammered through;
+ * - `Retry-After` honoured on 429 and 503, and remembered: the host is put on
+ *   a cooldown that the next request checks before opening a socket, so a
+ *   publisher who said "wait" is not asked again by the seven other URLs on
+ *   that host, or by tomorrow's cycle;
  * - a response size cap and a content-type check, because a feed URL that
  *   suddenly returns 200 MB of HTML is not a feed any more;
  * - the same SSRF guard used everywhere else: no private hosts, no credentials
@@ -29,12 +32,28 @@ export type FetchOutcome =
   | { status: 'RATE_LIMITED'; retryAfterMs: number }
   | { status: 'FAILED'; httpStatus: number | null; reason: string };
 
+/**
+ * Where cooldowns are kept between processes.
+ *
+ * Optional: without one the fetcher still backs off for the rest of the run,
+ * which is the case that matters most. With one, a 429 at the end of Monday's
+ * cycle is still respected on Tuesday.
+ */
+export interface CooldownStore {
+  /** Epoch milliseconds until which this host asked not to be called. */
+  get(host: string): Promise<number | null>;
+  set(host: string, until: number, reason: string): Promise<void>;
+}
+
 export interface HttpFetcherOptions {
   userAgent?: string;
   timeoutMs?: number;
   maxBytes?: number;
   minHostIntervalMs?: number;
   acceptedContentTypes?: readonly string[];
+  cooldowns?: CooldownStore;
+  /** Longest a single Retry-After may park a host. Default 6 hours. */
+  maxCooldownMs?: number;
 }
 
 const MAX_REDIRECTS = 5;
@@ -48,15 +67,21 @@ export class HttpFetcher {
   private readonly maxBytes: number;
   private readonly minHostIntervalMs: number;
   private readonly acceptedContentTypes: readonly string[];
+  private readonly cooldowns: CooldownStore | undefined;
+  private readonly maxCooldownMs: number;
   /** Per-host serialisation: each host's requests queue behind the last one. */
   private readonly hostQueues = new Map<string, Promise<unknown>>();
   private readonly lastRequestAt = new Map<string, number>();
+  /** Hosts that asked us to wait, for the rest of this process's life. */
+  private readonly cooldownUntil = new Map<string, number>();
 
   constructor(options: HttpFetcherOptions = {}) {
     this.userAgent = options.userAgent ?? process.env.INTAKE_USER_AGENT ?? DEFAULT_USER_AGENT;
     this.timeoutMs = options.timeoutMs ?? 25_000;
     this.maxBytes = options.maxBytes ?? 8 * 1024 * 1024;
     this.minHostIntervalMs = options.minHostIntervalMs ?? 1_500;
+    this.cooldowns = options.cooldowns;
+    this.maxCooldownMs = options.maxCooldownMs ?? 6 * 60 * 60 * 1000;
     this.acceptedContentTypes = options.acceptedContentTypes ?? [
       'application/rss+xml',
       'application/atom+xml',
@@ -76,11 +101,49 @@ export class HttpFetcher {
       return { status: 'FAILED', httpStatus: null, reason: `${checked.reason}: ${checked.detail}` };
     }
 
+    const host = hostOf(url);
+
+    // Asked before the socket, not after. A publisher who answered 429 gets no
+    // further requests until the time they named, whatever else is queued.
+    const waiting = await this.cooldownRemaining(host);
+    if (waiting !== null) {
+      return { status: 'RATE_LIMITED', retryAfterMs: waiting };
+    }
+
     // The queue slot is taken once, for the whole request including its
     // redirects. Re-entering it per hop deadlocks the moment two hosts point at
     // each other, which real publishers do: feeds.example.com redirects to
     // www.example.com, which redirects back.
-    return this.enqueue(hostOf(url), () => this.perform(url, state));
+    const outcome = await this.enqueue(host, () => this.perform(url, state));
+
+    if (outcome.status === 'RATE_LIMITED') {
+      await this.startCooldown(host, outcome.retryAfterMs, `HTTP 429/503 on ${url}`);
+    }
+    return outcome;
+  }
+
+  /** Milliseconds left on this host's cooldown, or null if it is free. */
+  private async cooldownRemaining(host: string): Promise<number | null> {
+    const local = this.cooldownUntil.get(host);
+    if (local !== undefined) {
+      if (local > Date.now()) return local - Date.now();
+      this.cooldownUntil.delete(host);
+    }
+
+    if (!this.cooldowns) return null;
+    const stored = await this.cooldowns.get(host).catch(() => null);
+    if (stored === null || stored <= Date.now()) return null;
+
+    this.cooldownUntil.set(host, stored);
+    return stored - Date.now();
+  }
+
+  private async startCooldown(host: string, retryAfterMs: number, reason: string): Promise<void> {
+    // A publisher can ask for a week. Honour the request but bound our own
+    // memory of it, or one bad header takes a source out of the set for good.
+    const until = Date.now() + Math.min(this.maxCooldownMs, Math.max(1_000, retryAfterMs));
+    this.cooldownUntil.set(host, until);
+    await this.cooldowns?.set(host, until, reason).catch(() => undefined);
   }
 
   /** Serialise per host, and keep a floor between consecutive requests to it. */

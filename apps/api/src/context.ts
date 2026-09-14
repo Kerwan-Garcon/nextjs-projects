@@ -9,7 +9,7 @@ import {
   type AIProvider,
   type ResearchSearchProvider,
 } from '@saveus/agents';
-import { createDb, resolveDbConfig, type Db } from '@saveus/db';
+import { PostgresRateLimiter, createDb, resolveDbConfig, type Db } from '@saveus/db';
 import { readEnv, type AppEnv } from './env.js';
 
 type RedisConstructor = new (url: string) => Redis;
@@ -53,8 +53,26 @@ export function createContext(options: CreateContextOptions = {}): AppContext {
     provider,
     search,
     queue: options.queue ?? createQueue(env),
-    rateLimiter: options.rateLimiter ?? new MemoryRateLimiter(),
+    rateLimiter: options.rateLimiter ?? createRateLimiter(env, db),
   };
+}
+
+/**
+ * A rate limiter the deployment can actually rely on.
+ *
+ * The in-memory one counts in a Map, which is correct for a single long-running
+ * server and meaningless anywhere else: on a serverless host every invocation
+ * starts with an empty Map, so the middleware runs, decides yes, and protects
+ * nothing. Anything with more than one process shares the counter in Postgres,
+ * which is the one dependency every deployment of this platform already has.
+ *
+ * Tests keep the in-memory one: they are single-process by construction, and a
+ * limiter that writes to the shared test database would leak state between
+ * suites.
+ */
+function createRateLimiter(env: AppEnv, db: Db): RateLimiter {
+  if (env.NODE_ENV === 'test' || env.RATE_LIMIT_DRIVER === 'memory') return new MemoryRateLimiter();
+  return new PostgresRateLimiter(db);
 }
 
 function createQueue(env: AppEnv): Queue {

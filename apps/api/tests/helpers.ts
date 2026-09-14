@@ -1,4 +1,4 @@
-import { MemoryRateLimiter } from '@saveus/common';
+import { MemoryRateLimiter, type RateLimiter } from '@saveus/common';
 import { InMemoryQueue } from '@saveus/common/queue';
 import { DeterministicProvider, seedDemoResearch } from '@saveus/agents';
 import { createDb, dropAll, migrate, type Db } from '@saveus/db';
@@ -37,6 +37,13 @@ export interface Harness {
   withEnv: (overrides: Record<string, string>) => {
     request: (path: string, init?: RequestInit) => Promise<Response>;
     json: <T>(path: string, init?: RequestInit) => Promise<T>;
+  };
+  /**
+   * The same database behind an app with a different limiter. Exhausting the
+   * shared one to observe a refusal would refuse every test that follows.
+   */
+  withLimiter: (rateLimiter: RateLimiter) => {
+    request: (path: string, init?: RequestInit) => Promise<Response>;
   };
   close: () => Promise<void>;
 }
@@ -119,6 +126,22 @@ export async function createHarness(options: { seedResearch?: boolean } = {}): P
     };
   };
 
+  const withLimiter = (rateLimiter: RateLimiter) => {
+    const scoped = createApp(
+      createContext({
+        db,
+        env,
+        provider: new DeterministicProvider(),
+        queue: new InMemoryQueue(),
+        rateLimiter,
+      }),
+    );
+    return {
+      request: (path: string, init: RequestInit = {}): Promise<Response> =>
+        scoped.request(new Request(`${ORIGIN}${path}`, init)),
+    };
+  };
+
   return {
     app,
     ctx,
@@ -128,6 +151,7 @@ export async function createHarness(options: { seedResearch?: boolean } = {}): P
     json,
     signIn,
     withEnv,
+    withLimiter,
     close: async () => {
       await db.destroy();
       await pool.end().catch(() => undefined);

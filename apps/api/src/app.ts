@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getCookie } from 'hono/cookie';
-import { AppError, HTTP_STATUS, RATE_LIMITS } from '@saveus/common';
+import { AppError, HTTP_STATUS, RATE_LIMITS, type RateLimitDecision } from '@saveus/common';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { SESSION_COOKIE, resolveSession, type SessionUser } from './auth.js';
 import { createContext, type AppContext } from './context.js';
@@ -51,20 +51,34 @@ export function createApp(context: AppContext = createContext()) {
   // Read limiting is generous; writes and agent runs are limited per identity
   // in their own routes, where the cost actually is.
   app.use('*', async (c, next) => {
-    const identity = c.get('user')?.id ?? c.req.header('x-forwarded-for') ?? 'anonymous';
     const decision = await context.rateLimiter.check(
-      `read:${identity}`,
+      `read:${callerIdentity(c)}`,
       RATE_LIMITS.read.limit,
       RATE_LIMITS.read.windowMs,
     );
+    applyRateLimitHeaders(c, decision);
+
     if (!decision.allowed) {
-      return c.json({ error: { code: 'RATE_LIMITED', message: 'Too many requests' } }, 429);
+      return c.json(
+        {
+          error: {
+            code: 'RATE_LIMITED',
+            message: 'Too many requests',
+            details: null,
+          },
+        },
+        429,
+      );
     }
     await next();
   });
 
   app.onError((error, c) => {
     if (error instanceof AppError) {
+      // A refusal that does not say when to come back invites a retry loop.
+      const retryAfter = retryAfterFrom(error);
+      if (retryAfter !== null) c.header('Retry-After', String(retryAfter));
+
       return c.json(
         { error: { code: error.code, message: error.message, details: error.details ?? null } },
         HTTP_STATUS[error.code] as ContentfulStatusCode,
@@ -89,6 +103,65 @@ export function createApp(context: AppContext = createContext()) {
   return app;
 }
 
+/**
+ * Who to count this request against.
+ *
+ * A signed-in identity is the honest answer. Falling back to an address needs
+ * care: `x-forwarded-for` is a request header like any other, so reading it
+ * whole lets a caller send a different value each time and never meet a limit.
+ *
+ * The assumption made here is one trusted proxy in front of the app, which is
+ * what every deployment in docs/DEPLOY.md is. Under that assumption the proxy's
+ * own `x-real-ip`, or the rightmost entry it appended to the chain, is the one
+ * value the caller could not choose. Anything to the left of it is hearsay.
+ */
+/** The seconds a RATE_LIMITED error carries, when it carries any. */
+function retryAfterFrom(error: AppError): number | null {
+  if (error.code !== 'RATE_LIMITED') return null;
+  const details = error.details;
+  if (details && typeof details === 'object' && 'retryAfterSeconds' in details) {
+    const seconds = (details as { retryAfterSeconds: unknown }).retryAfterSeconds;
+    if (typeof seconds === 'number' && Number.isFinite(seconds)) return Math.max(1, Math.ceil(seconds));
+  }
+  return 60;
+}
+
+export function callerIdentity(c: {
+  get: (key: 'user') => SessionUser | null | undefined;
+  req: { header: (name: string) => string | undefined };
+}): string {
+  const user = c.get('user');
+  if (user) return `user:${user.id}`;
+
+  const realIp = c.req.header('x-real-ip')?.trim();
+  if (realIp) return `ip:${realIp}`;
+
+  const chain = (c.req.header('x-forwarded-for') ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const nearest = chain[chain.length - 1];
+
+  return nearest ? `ip:${nearest}` : 'anonymous';
+}
+
+/**
+ * Tell the client what the limit is, on every response rather than only on the
+ * one that was refused. A 429 with no `Retry-After` gives a well-behaved client
+ * nothing to be well-behaved with, and it is the header this platform demands
+ * of itself when it fetches other people.
+ */
+export function applyRateLimitHeaders(
+  c: { header: (name: string, value: string) => void },
+  decision: RateLimitDecision,
+): void {
+  const resetSeconds = Math.max(0, Math.ceil((decision.resetAt - Date.now()) / 1000));
+  c.header('RateLimit-Limit', String(decision.limit));
+  c.header('RateLimit-Remaining', String(decision.remaining));
+  c.header('RateLimit-Reset', String(resetSeconds));
+  if (!decision.allowed) c.header('Retry-After', String(resetSeconds));
+}
+
 /** Throws rather than returning null so route handlers stay linear. */
 export function requireUser(user: SessionUser | null): SessionUser {
   if (!user) {
@@ -107,6 +180,10 @@ export async function enforceWriteLimit(context: AppContext, identity: string): 
     RATE_LIMITS.write.windowMs,
   );
   if (!decision.allowed) {
-    throw new AppError('RATE_LIMITED', 'Slow down: too many writes in the last minute.');
+    throw new AppError(
+      'RATE_LIMITED',
+      'Slow down: too many writes in the last minute.',
+      { retryAfterSeconds: Math.max(1, Math.ceil((decision.resetAt - Date.now()) / 1000)) },
+    );
   }
 }

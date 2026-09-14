@@ -186,6 +186,16 @@ the EEA, Nature, the Lancet and Europe PMC. `INTAKE_USER_AGENT` should carry a
 real contact address before you do: publishers are entitled to know who is
 fetching them and how to ask you to stop.
 
+**Rate-limit counters need to be shared, and are by default.** They live in
+Postgres because an in-memory counter on a serverless host is one empty map per
+invocation — the middleware runs, decides yes, and protects nothing. If you set
+`RATE_LIMIT_DRIVER=memory`, do it only for a single long-running process.
+
+**A publisher who answers 429 is put on a cooldown that outlives the run.** It
+is recorded per host, not per URL, so a refusal from one endpoint stops the
+seven other requests queued behind it. Cooldowns and lapsed rate-limit windows
+are swept by the daily cron call, so nothing needs pruning by hand.
+
 **`db:seed` refuses to run twice.** It checks for existing problems and exits
 rather than duplicating them. Use `pnpm db:reset` to start over — which drops the
 schema, so never against anything you care about.

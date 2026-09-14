@@ -1,6 +1,6 @@
 import type { Db } from '@saveus/db';
 import type { SourceConnector } from './connector.js';
-import { HttpFetcher, type FetchState } from './http.js';
+import { HttpFetcher, type CooldownStore, type FetchState } from './http.js';
 import {
   analysisConnector,
   institutionalConnector,
@@ -57,6 +57,40 @@ export function createFeedStateStore(db: Db, connector: string): FeedStateStore 
   };
 }
 
+/**
+ * Cooldowns that outlive the process.
+ *
+ * Without this a 429 is forgotten the moment the run ends, and tomorrow's cycle
+ * asks again at the same rate - which is the behaviour a publisher answering
+ * 429 is explicitly trying to stop.
+ */
+export function createCooldownStore(db: Db): CooldownStore {
+  return {
+    async get(host: string): Promise<number | null> {
+      const row = await db
+        .selectFrom('host_cooldowns')
+        .where('host', '=', host)
+        .select('until')
+        .executeTakeFirst();
+      return row ? new Date(row.until).getTime() : null;
+    },
+
+    async set(host: string, until: number, reason: string): Promise<void> {
+      await db
+        .insertInto('host_cooldowns')
+        .values({ host, until: new Date(until), reason, observed_at: new Date() })
+        .onConflict((oc) =>
+          oc.column('host').doUpdateSet({
+            until: new Date(until),
+            reason,
+            observed_at: new Date(),
+          }),
+        )
+        .execute();
+    },
+  };
+}
+
 export function isLiveIntakeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.INTAKE_LIVE === 'true' || env.INTAKE_LIVE === '1';
 }
@@ -66,7 +100,10 @@ export function isLiveIntakeEnabled(env: NodeJS.ProcessEnv = process.env): boole
  * institutional newsrooms, peer-reviewed tables of contents, and the literature
  * itself queried for abstracts that state a gap.
  */
-export function liveConnectors(db: Db, fetcher = new HttpFetcher()): SourceConnector[] {
+export function liveConnectors(
+  db: Db,
+  fetcher = new HttpFetcher({ cooldowns: createCooldownStore(db) }),
+): SourceConnector[] {
   return [
     institutionalConnector(fetcher, createFeedStateStore(db, 'institutional-feeds')),
     journalConnector(fetcher, createFeedStateStore(db, 'journal-feeds')),

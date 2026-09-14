@@ -344,6 +344,20 @@ export interface FetchStateTable {
   last_fetched_at: Timestamp;
 }
 
+export interface RateLimitsTable {
+  key: string;
+  count: number;
+  expires_at: RequiredTimestamp;
+}
+
+/** Hosts that answered 429 or 503 and said when to come back. */
+export interface HostCooldownsTable {
+  host: string;
+  until: RequiredTimestamp;
+  reason: string | null;
+  observed_at: Timestamp;
+}
+
 export interface IngestionRunsTable {
   id: Generated<string>;
   connector: string;
@@ -440,6 +454,8 @@ export interface Database {
   validations: ValidationsTable;
   reputation_events: ReputationEventsTable;
   fetch_state: FetchStateTable;
+  rate_limits: RateLimitsTable;
+  host_cooldowns: HostCooldownsTable;
   ingestion_runs: IngestionRunsTable;
   raw_documents: RawDocumentsTable;
   problem_candidates: ProblemCandidatesTable;

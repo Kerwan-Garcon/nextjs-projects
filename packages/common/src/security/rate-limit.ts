@@ -21,10 +21,12 @@ export class MemoryRateLimiter implements RateLimiter {
     const now = Date.now();
     const bucket = this.windows.get(key);
 
+    // A fresh window and a live one take the same decision, or a limit of zero
+    // still lets the first request through and `remaining` reports -1.
     if (!bucket || bucket.resetAt <= now) {
       const resetAt = now + windowMs;
       this.windows.set(key, { count: 1, resetAt });
-      return { allowed: true, remaining: limit - 1, limit, resetAt };
+      return { allowed: 1 <= limit, remaining: Math.max(0, limit - 1), limit, resetAt };
     }
 
     bucket.count += 1;
