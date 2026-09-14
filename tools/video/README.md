@@ -1,12 +1,12 @@
 # Recording the videos
 
-Two films, both produced by driving the real application rather than by
-editing footage: a **product walkthrough** and a **promotional reel**.
+Two films, both produced by driving the real application rather than by editing
+footage: a **product walkthrough** and a **narrated film**.
 
 Nothing in either is staged. The walkthrough signs in, reads a problem, posts a
 counterargument and runs the four-agent pipeline against the seeded database;
 the agent findings on screen were computed while the camera was rolling. The
-reel is a page composed from the product's own design tokens and its own
+film is a page composed from the product's own design tokens and its own
 screenshots — there is no stock footage and no generated imagery in it, because
 the product's first rule is that nothing on screen should be prettier than it is
 true.
@@ -19,18 +19,16 @@ pnpm --filter @saveus/web build
 pnpm --filter @saveus/web exec next start --port 3100
 ```
 
-Post-production needs an ffmpeg with `libx264` and `libass`. Playwright bundles
-one, but it is built with nearly everything disabled, so point `FFMPEG` at a
-full build.
+Post-production needs an ffmpeg with `libx264`, `libass` and `aac`. Playwright
+bundles one, but it is built with nearly everything disabled, so point `FFMPEG`
+at a full build.
 
-## Walkthrough
+## Walkthrough — 3:48, captioned, silent
 
 ```bash
-node tools/video/demo.mjs
-FFMPEG=/path/to/ffmpeg tools/video/postprod.sh \
-  tools/video/out/demo-raw.webm \
-  tools/video/out/save-us-demo.mp4 \
-  tools/video/out/demo.ass
+pnpm video:demo
+FFMPEG=... tools/video/postprod.sh \
+  tools/video/out/demo-raw.webm tools/video/out/save-us-demo.mp4 tools/video/out/demo.ass
 ```
 
 Captions are not written by hand against a stopwatch. The script records a beat
@@ -44,29 +42,70 @@ video of a page where nothing happened. That is not hypothetical: the first two
 takes did exactly that, because driving the mouse by coordinate does not wait
 for hydration and does not notice the sticky header sitting over the button.
 
-## Reel
+## Film — 0:53, narrated, scored
 
 ```bash
-node tools/video/shots.mjs             # stills, from the running app
-node tools/video/preview.mjs           # one PNG per scene, to review before recording
-node tools/video/reel.mjs
-FFMPEG=/path/to/ffmpeg tools/video/postprod.sh \
-  tools/video/out/reel-raw.webm \
-  tools/video/out/save-us-reel.mp4
+pnpm video:shots                       # stills, from the running app
+pnpm video:voice                       # narration, then the score
+pnpm video:preview                     # one PNG per scene, to review the cut
+pnpm video:film
+FFMPEG=... tools/video/postprod.sh \
+  tools/video/out/film-raw.webm tools/video/out/film-silent.mp4 "" "$LEAD"
+FFMPEG=... tools/video/mix.sh \
+  tools/video/out/film-silent.mp4 tools/video/out/save-us-film.mp4
 ```
 
-`reel.html` is the film. Scene order and duration live in the `SCENES` array at
-the bottom of it; everything else is CSS. Editing the copy means editing that
-file and re-recording — which takes about ninety seconds and is the reason it is
-built this way rather than in an editor.
+`$LEAD` is `leadMs` from `tools/video/out/film.timing.json`, in seconds.
+
+**The voice is cut first and the picture follows it.** `audio/tts.py`
+synthesises each line of `audio/script.json` with Kokoro-82M, trims the silence
+Kokoro leaves at the ends, and writes `vo.json` — every line with the duration it
+actually came out at. `film.html` fetches that file and holds each scene for its
+line. Editing a sentence and re-running the voice re-cuts the film; nobody
+touches a timeline.
+
+Three things that are easy to get wrong and are handled here:
+
+- **The schedule is absolute.** `setTimeout` only promises "no sooner than", and
+  the DOM work between scenes costs a few milliseconds more, so eleven chained
+  `await sleep(hold)` calls finish seconds late — which plays as the voice
+  running ahead of the picture.
+- **The lead-in is measured and trimmed.** Recording starts when the page opens,
+  but the film cannot start until it has loaded, and that dead footage would put
+  the picture behind the narration by however long the load took.
+- **The outgoing scene is captured by value.** An arrow function closing over the
+  loop variable fires half a second later against whatever it points at by then,
+  which is the scene that just came up — a film where the first shot never leaves
+  and nothing after it stays longer than half a second.
+
+### The voice
+
+Kokoro-82M, Apache-2.0, run locally. The weights (~330 MB) are fetched once into
+`audio/model/`, which is not tracked. The quantised builds segfault under
+onnxruntime 1.30; the full-precision model is used instead and still synthesises
+a minute of speech in well under a minute.
+
+Local rather than hosted for a reason that matters here: the film's timing is
+derived from the voice, so the voice has to be regenerable. Swap it with
+`python3 tools/video/audio/tts.py am_fenrir` — the film re-times itself on the
+next take.
+
+### The score
+
+`audio/music.py` synthesises it from scratch, as a function of the running time,
+so it is always exactly as long as the film. A low drone, a pad through
+i–VI–III–VII in A minor, a pulse that waits for the narration to start, and a
+pentatonic motif on a struck-metal voice. `mix.sh` ducks it under the voice with
+a real sidechain compressor rather than a static level, and normalises the result
+to −16 LUFS, which is what the social platforms target.
 
 ## Environment
 
-| Variable                     | Purpose                                                                  |
-| ---------------------------- | ------------------------------------------------------------------------ |
-| `DEMO_BASE`                  | Where the app is running. Default `http://127.0.0.1:3100`.                |
-| `PLAYWRIGHT_CHROMIUM_PATH`   | Override the browser binary when Playwright's own resolution is wrong.    |
-| `FFMPEG`                     | Full ffmpeg build for `postprod.sh`.                                      |
+| Variable                   | Purpose                                                               |
+| -------------------------- | --------------------------------------------------------------------- |
+| `DEMO_BASE`                | Where the app is running. Default `http://127.0.0.1:3100`.             |
+| `PLAYWRIGHT_CHROMIUM_PATH` | Override the browser binary when Playwright's own resolution is wrong. |
+| `FFMPEG`                   | Full ffmpeg build for `postprod.sh` and `mix.sh`.                      |
 
 Output lands in `tools/video/out/`, which is not tracked. Both films encode at
 the recording size rather than upscaling: pushing the 1600x900 capture to 1080p

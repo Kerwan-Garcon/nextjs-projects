@@ -528,6 +528,29 @@ how to run them.
 
 ---
 
+## Video
+
+Two films, both produced by driving the real application rather than by editing
+footage. `tools/video/` holds the recorders and `tools/video/README.md` explains
+how to run them.
+
+- **Walkthrough** — 3:48, captioned (`pnpm video:demo`). Signs in, reads a
+  problem, posts a counterargument and runs the four-agent pipeline against the
+  seeded database. The agent findings on screen were computed while the camera
+  was rolling. Captions are generated from when the script actually narrated each
+  beat, so re-recording on a slower machine re-times them; a click that misses or
+  an agent run that does not complete fails the recording rather than producing a
+  confident video of a page where nothing happened.
+- **Film** — 0:53, narrated and scored (`pnpm video:voice && pnpm video:film`).
+  The narration is synthesised first, with Kokoro-82M running locally, and the
+  picture is cut to it: `film.html` holds each scene for exactly as long as its
+  line came out. Edit a sentence, re-run the voice, and the film re-times itself.
+  The score is synthesised too, as a function of the running time, so it is
+  always exactly as long as the film.
+
+No stock footage and no generated imagery in either. Every number on screen is
+one this repository can produce.
+
 ## Testing
 
 ```bash

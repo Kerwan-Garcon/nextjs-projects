@@ -24,13 +24,15 @@ if [ -z "$FF" ]; then
 fi
 
 IN="$1"; OUT="$2"; SUBS="${3:-}"
+# Optional fourth argument: seconds of dead lead-in to drop from the head.
+TRIM="${4:-0}"
 
 FILTER="format=yuv420p"
 if [ -n "$SUBS" ]; then
   FILTER="subtitles=${SUBS}:fontsdir=/usr/share/fonts,format=yuv420p"
 fi
 
-"$FF" -y -loglevel error -i "$IN" \
+"$FF" -y -loglevel error -ss "$TRIM" -i "$IN" \
   -vf "$FILTER" \
   -r 30 -c:v libx264 -preset veryslow -crf 24 -profile:v high -level 4.0 \
   -movflags +faststart -pix_fmt yuv420p \

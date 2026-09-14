@@ -22,3 +22,5 @@ blob-report/
 tools/video/out/
 tools/video/shots/
 tools/video/preview/
+tools/video/audio/model/
+tools/video/audio/out/
