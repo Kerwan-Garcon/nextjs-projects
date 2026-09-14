@@ -68,4 +68,7 @@ built this way rather than in an editor.
 | `PLAYWRIGHT_CHROMIUM_PATH`   | Override the browser binary when Playwright's own resolution is wrong.    |
 | `FFMPEG`                     | Full ffmpeg build for `postprod.sh`.                                      |
 
-Output lands in `tools/video/out/`, which is not tracked.
+Output lands in `tools/video/out/`, which is not tracked. Both films encode at
+the recording size rather than upscaling: pushing the 1600x900 capture to 1080p
+made the file two and a half times larger and no sharper, because there was no
+extra detail to carry.
