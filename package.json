@@ -32,7 +32,8 @@
     "video:demo": "node tools/video/demo.mjs",
     "video:preview": "node tools/video/preview.mjs",
     "video:voice": "python3 tools/video/audio/tts.py && python3 tools/video/audio/music.py",
-    "video:film": "node tools/video/film.mjs"
+    "video:film": "node tools/video/film.mjs",
+    "db:deploy": "pnpm --filter @saveus/db migrate"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",

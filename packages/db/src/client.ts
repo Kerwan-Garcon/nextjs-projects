@@ -19,7 +19,11 @@ export function createDb(config: DbConfig = resolveDbConfig()): { db: Db; pool: 
   const pool = new pg.Pool({
     connectionString: config.connectionString,
     max: config.maxPoolSize,
-    ...(config.ssl ? { ssl: { rejectUnauthorized: false } } : {}),
+    // A serverless invocation that waits thirty seconds for a connection has
+    // already exceeded its own budget; failing fast is more useful.
+    connectionTimeoutMillis: Number(process.env.DATABASE_CONNECT_TIMEOUT_MS ?? 10_000),
+    idleTimeoutMillis: Number(process.env.DATABASE_IDLE_TIMEOUT_MS ?? 30_000),
+    ...(config.ssl ? { ssl: { rejectUnauthorized: config.rejectUnauthorized } } : {}),
   });
   const db = new Kysely<Database>({ dialect: new PostgresDialect({ pool }) });
   return { db, pool };

@@ -9,7 +9,7 @@ import {
   type AIProvider,
   type ResearchSearchProvider,
 } from '@saveus/agents';
-import { createDb, type Db } from '@saveus/db';
+import { createDb, resolveDbConfig, type Db } from '@saveus/db';
 import { readEnv, type AppEnv } from './env.js';
 
 type RedisConstructor = new (url: string) => Redis;
@@ -40,8 +40,10 @@ export interface CreateContextOptions {
 
 export function createContext(options: CreateContextOptions = {}): AppContext {
   const env = options.env ?? readEnv();
-  const db =
-    options.db ?? createDb({ connectionString: env.DATABASE_URL, maxPoolSize: 10, ssl: false }).db;
+  // Resolve from the environment rather than hard-coding: TLS and pool size
+  // are exactly the two settings that differ between a laptop and a managed
+  // database, and pinning them here made both wrong in production.
+  const db = options.db ?? createDb(resolveDbConfig()).db;
   const provider = options.provider ?? resolveProvider(process.env);
   const search = new ProblemScopedSearchProvider(db, new CorpusSearchProvider(db));
 

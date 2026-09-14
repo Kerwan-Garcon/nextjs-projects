@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { resolveConnectors, runIngestion } from '@saveus/agents';
+import { resolveConnectors, runIngestion, runIngestionCycle } from '@saveus/agents';
 import { createHarness, postJson, withCookie, type Harness } from './helpers.js';
 
 let harness: Harness;
@@ -659,6 +659,90 @@ describe('ingestion', () => {
  * a statement that fails the checklist, and a second attempt at something
  * already published.
  */
+/**
+ * The scheduled endpoint.
+ *
+ * It exists so a deployment with no worker process still ingests daily, and it
+ * has to be at least as careful as the worker was: unauthenticated callers get
+ * nothing, and it will not run twice in a day.
+ */
+describe('scheduled intake over HTTP', () => {
+  const SECRET = 'a-secret-long-enough-to-pass';
+
+  it('is absent when no secret is configured', async () => {
+    // The same posture as a fresh deployment: no secret, no endpoint.
+    const response = await harness.request('/api/cron/intake');
+    expect(response.status).toBe(404);
+  });
+
+  it('refuses a caller with the wrong secret', async () => {
+    const cron = harness.withEnv({ CRON_SECRET: SECRET });
+    for (const init of [
+      undefined,
+      { headers: { authorization: 'Bearer nope-nope-nope-nope-nope' } },
+      { headers: { 'x-cron-secret': '' } },
+      { headers: { 'x-cron-secret': `${SECRET}x` } },
+    ]) {
+      const response = await cron.request('/api/cron/intake', init);
+      expect(response.status).toBe(401);
+    }
+  });
+
+  it('accepts either header shape and reports what each connector did', async () => {
+    const cron = harness.withEnv({ CRON_SECRET: SECRET });
+    const response = await cron.request('/api/cron/intake?force=true', {
+      headers: { authorization: `Bearer ${SECRET}` },
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      ran: boolean;
+      connectors: { connector: string; fetched: number }[];
+    };
+    expect(body.ran).toBe(true);
+    expect(body.connectors.length).toBeGreaterThan(0);
+  });
+
+  it('will not run twice in a day', async () => {
+    const cron = harness.withEnv({ CRON_SECRET: SECRET });
+    // The previous test recorded a SCHEDULED run, which is what the rule reads.
+    const response = await cron.request('/api/cron/intake', {
+      headers: { 'x-cron-secret': SECRET },
+    });
+
+    const body = (await response.json()) as { ran: boolean; reason?: string };
+    expect(body.ran).toBe(false);
+    expect(body.reason).toMatch(/already ingested/i);
+  });
+
+  it('stops between connectors once the time budget is spent', async () => {
+    // The budget belongs to the cycle, so it is tested there rather than
+    // through a route whose floor would have to be defeated to observe it.
+    const outcome = await runIngestionCycle({
+      db: harness.db,
+      connectors: resolveConnectors(harness.db, {}),
+      trigger: 'MANUAL',
+      deadlineAt: Date.now() - 1,
+    });
+
+    expect(outcome.stats).toHaveLength(0);
+    // Nothing is lost - a skipped connector is simply first in line next time.
+    expect(outcome.skipped.length).toBeGreaterThan(0);
+  });
+
+  it('finishes the connectors it started before the budget ran out', async () => {
+    const outcome = await runIngestionCycle({
+      db: harness.db,
+      connectors: resolveConnectors(harness.db, {}),
+      trigger: 'MANUAL',
+      deadlineAt: Date.now() + 60_000,
+    });
+
+    expect(outcome.skipped).toHaveLength(0);
+    expect(outcome.stats.length).toBeGreaterThan(0);
+  });
+});
+
 describe('publishing a problem from a candidate', () => {
   beforeAll(async () => {
     // The offline connectors, so the queue has something in it. Same pipeline

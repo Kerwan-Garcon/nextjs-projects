@@ -1,0 +1,69 @@
+# Render blueprint — the portable alternative to Vercel.
+#
+# Why it is here: Vercel is serverless, so the scheduled intake runs as an HTTP
+# endpoint a platform cron calls. This shape runs the real worker instead, with
+# its own clock and queue. Both are supported; neither is required.
+#
+# Read the free-tier terms before relying on them. At the time of writing a free
+# web service sleeps after fifteen minutes of inactivity (so the first request
+# after a quiet night waits for a cold start), free Postgres instances are
+# time-limited, and background workers are not offered on the free plan at all.
+# That is why the Vercel + Neon path is the documented default.
+
+databases:
+  - name: saveus-db
+    databaseName: saveus
+    user: saveus
+    plan: free
+
+services:
+  - type: web
+    name: saveus-web
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerTarget: web
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: saveus-db
+          property: connectionString
+      - key: APP_SECRET
+        generateValue: true
+      - key: CRON_SECRET
+        generateValue: true
+      - key: PUBLIC_APP_URL
+        sync: false
+      # Live intake is opt-in. Leave it off until you have read what the
+      # connectors fetch and are willing to be a well-behaved client of them.
+      - key: INTAKE_LIVE
+        value: 'false'
+
+  # Not available on the free plan. Kept here because it is the correct shape
+  # for a paid deployment, and because it documents what the cron endpoint is
+  # standing in for.
+  - type: worker
+    name: saveus-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerTarget: worker
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: saveus-db
+          property: connectionString
+      - key: APP_SECRET
+        fromService:
+          name: saveus-web
+          type: web
+          envVarKey: APP_SECRET
+      - key: INTAKE_LIVE
+        value: 'false'

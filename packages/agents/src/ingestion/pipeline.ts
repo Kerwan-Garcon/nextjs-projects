@@ -181,14 +181,43 @@ export interface RunIngestionInput {
   connectors: readonly SourceConnector[];
   trigger?: 'MANUAL' | 'SCHEDULED' | 'SEED';
   now?: Date;
+  /**
+   * Stop starting new work after this moment (epoch milliseconds).
+   *
+   * A long-running worker has all day. A serverless function has whatever its
+   * platform allows, and being killed mid-cycle leaves an ingestion_runs row
+   * open forever with no record of why. With a budget the cycle stops between
+   * connectors, finishes its bookkeeping, and reports what it did not reach -
+   * which the next run picks up, because every connector is independent.
+   */
+  deadlineAt?: number;
+}
+
+export interface IngestionOutcome {
+  stats: IngestionStats[];
+  /** Connectors the time budget did not allow. Not an error; a fact to report. */
+  skipped: string[];
 }
 
 export async function runIngestion(input: RunIngestionInput): Promise<IngestionStats[]> {
+  return (await runIngestionCycle(input)).stats;
+}
+
+/** Same cycle, with the budget outcome the caller may want to report. */
+export async function runIngestionCycle(input: RunIngestionInput): Promise<IngestionOutcome> {
   const stats: IngestionStats[] = [];
+  const skipped: string[] = [];
+  const outOfTime = (): boolean =>
+    input.deadlineAt !== undefined && Date.now() >= input.deadlineAt;
+
   // Titles already on the board or in the queue, for near-duplicate rejection.
   const existingTitles = await loadExistingTitles(input.db);
 
   for (const connector of input.connectors) {
+    if (outOfTime()) {
+      skipped.push(connector.name);
+      continue;
+    }
     const runId = randomUUID();
     const stat: IngestionStats = {
       connector: connector.name,
@@ -303,7 +332,9 @@ export async function runIngestion(input: RunIngestionInput): Promise<IngestionS
       passed.sort((a, b) => b.assessment.score - a.assessment.score);
 
       for (const entry of passed) {
-        if (stat.candidates >= MAX_CANDIDATES_PER_RUN) {
+        // Everything fetched is already stored with its verdict, so stopping
+        // here loses nothing but the queueing, which the next cycle redoes.
+        if (stat.candidates >= MAX_CANDIDATES_PER_RUN || outOfTime()) {
           stat.deferred += 1;
           continue;
         }
@@ -411,7 +442,7 @@ export async function runIngestion(input: RunIngestionInput): Promise<IngestionS
     stats.push(stat);
   }
 
-  return stats;
+  return { stats, skipped };
 }
 
 async function loadExistingTitles(db: Db): Promise<string[]> {

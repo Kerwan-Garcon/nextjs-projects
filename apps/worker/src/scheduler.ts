@@ -1,5 +1,6 @@
+import { resolveScheduleHour, shouldRunDaily } from '@saveus/common';
 import { JOB_NAMES, type Queue } from '@saveus/common/queue';
-import type { Db } from '@saveus/db';
+import { lastScheduledIngestion, type Db } from '@saveus/db';
 
 /**
  * The daily intake schedule.
@@ -27,41 +28,15 @@ export interface SchedulerOptions {
   now?: () => Date;
 }
 
-export function resolveScheduleHour(env: NodeJS.ProcessEnv = process.env): number {
-  const raw = Number(env.INTAKE_HOUR_UTC ?? 5);
-  return Number.isInteger(raw) && raw >= 0 && raw <= 23 ? raw : 5;
-}
-
 /**
- * Should a cycle run now? Pure, so the rule is testable without waiting a day.
+ * Re-exported so callers of the worker keep one import, but the rule itself
+ * lives in `@saveus/common` and the query in `@saveus/db`. A deployment can be
+ * driven by this clock, by a platform scheduler calling `/api/cron/intake`, or
+ * briefly by both, and two copies of "have we run today" is how it ingests
+ * twice.
  */
-export function shouldRunDaily(input: {
-  now: Date;
-  lastRunAt: Date | null;
-  hour: number;
-}): boolean {
-  if (input.now.getUTCHours() < input.hour) return false;
-  if (!input.lastRunAt) return true;
-
-  const startOfToday = Date.UTC(
-    input.now.getUTCFullYear(),
-    input.now.getUTCMonth(),
-    input.now.getUTCDate(),
-    input.hour,
-  );
-  return input.lastRunAt.getTime() < startOfToday;
-}
-
-export async function lastIngestionAt(db: Db): Promise<Date | null> {
-  const row = await db
-    .selectFrom('ingestion_runs')
-    .where('trigger', '=', 'SCHEDULED')
-    .select('started_at')
-    .orderBy('started_at', 'desc')
-    .limit(1)
-    .executeTakeFirst();
-  return row?.started_at ?? null;
-}
+export { resolveScheduleHour, shouldRunDaily };
+export const lastIngestionAt = lastScheduledIngestion;
 
 export class IntakeScheduler {
   private timer: NodeJS.Timeout | null = null;
@@ -91,7 +66,7 @@ export class IntakeScheduler {
 
   async tick(): Promise<boolean> {
     try {
-      const lastRunAt = await lastIngestionAt(this.options.db);
+      const lastRunAt = await lastScheduledIngestion(this.options.db);
       if (!shouldRunDaily({ now: this.now(), lastRunAt, hour: this.hour })) return false;
 
       // A stable key per day makes a double-enqueue a no-op.

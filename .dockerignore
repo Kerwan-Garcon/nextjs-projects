@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+.next
+**/.next
+.git
+.github
+tools/video/out
+tools/video/shots
+tools/video/preview
+tools/video/audio/model
+tools/video/audio/out
+test-results
+playwright-report
+coverage
+*.log
+.env
+.env.local

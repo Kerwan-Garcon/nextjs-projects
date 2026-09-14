@@ -1,12 +1,14 @@
 import { z } from 'zod';
 
+const DEV_SECRET = 'dev-only-secret-change-me-please';
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().default(3001),
   DATABASE_URL: z.string().default('postgres://saveus:saveus@127.0.0.1:5432/saveus'),
   REDIS_URL: z.string().optional(),
-  /** Signs session cookies. Generated per-process in development. */
-  APP_SECRET: z.string().min(16).default('dev-only-secret-change-me-please'),
+  /** Signs session cookies. Refused at its default value in production. */
+  APP_SECRET: z.string().min(16).default(DEV_SECRET),
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().optional(),
   AI_PROVIDER: z.enum(['anthropic', 'deterministic']).optional(),
@@ -23,6 +25,13 @@ const EnvSchema = z.object({
    * bound where a sign-in may return to.
    */
   PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
+  /**
+   * Authorises the scheduled intake endpoint. Without it the endpoint refuses
+   * every request, which is the correct behaviour for a deployment that has not
+   * set one: an unauthenticated cron endpoint is a way for anyone to make the
+   * platform fetch other people's servers on demand.
+   */
+  CRON_SECRET: z.string().min(16).optional(),
 });
 
 export type AppEnv = z.infer<typeof EnvSchema>;
@@ -56,5 +65,17 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     const issues = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
     throw new Error(`Invalid environment:\n  ${issues.join('\n  ')}`);
   }
-  return parsed.data;
+
+  const env = parsed.data;
+
+  // A published deployment signing sessions with the documented development key
+  // is one anybody can mint a session for. Refusing to boot is the only safe
+  // response: a warning in a log nobody reads is not one.
+  if (env.NODE_ENV === 'production' && env.APP_SECRET === DEV_SECRET) {
+    throw new Error(
+      'APP_SECRET is still the development default. Set a real one before deploying: openssl rand -base64 32',
+    );
+  }
+
+  return env;
 }

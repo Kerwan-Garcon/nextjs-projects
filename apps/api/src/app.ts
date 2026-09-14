@@ -9,6 +9,7 @@ import { authRoutes } from './routes/auth.js';
 import { contributionRoutes } from './routes/contributions.js';
 import { hypothesisRoutes } from './routes/hypotheses.js';
 import { ingestionRoutes } from './routes/ingestion.js';
+import { cronRoutes } from './routes/cron.js';
 import { metaRoutes } from './routes/meta.js';
 import { peopleRoutes } from './routes/people.js';
 import { problemRoutes } from './routes/problems.js';
@@ -83,6 +84,7 @@ export function createApp(context: AppContext = createContext()) {
   app.route('/', researchRoutes());
   app.route('/', peopleRoutes());
   app.route('/', ingestionRoutes());
+  app.route('/', cronRoutes());
 
   return app;
 }

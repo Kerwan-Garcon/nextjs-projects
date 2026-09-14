@@ -31,6 +31,10 @@ export class AppError extends Error {
     return new AppError('FORBIDDEN', message);
   }
 
+  static unauthorized(message: string): AppError {
+    return new AppError('UNAUTHENTICATED', message);
+  }
+
   static conflict(message: string): AppError {
     return new AppError('CONFLICT', message);
   }

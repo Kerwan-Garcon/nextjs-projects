@@ -528,28 +528,29 @@ how to run them.
 
 ---
 
-## Video
+## Deploying
 
-Two films, both produced by driving the real application rather than by editing
-footage. `tools/video/` holds the recorders and `tools/video/README.md` explains
-how to run them.
+**Vercel Hobby for the app, Neon free for the database.** Free, no card, and the
+only free combination in which every part of this platform has a home.
+[`docs/DEPLOY.md`](docs/DEPLOY.md) is the step-by-step, the comparison against
+Render, Fly and the rest, and the list of things that will bite you.
 
-- **Walkthrough** — 3:48, captioned (`pnpm video:demo`). Signs in, reads a
-  problem, posts a counterargument and runs the four-agent pipeline against the
-  seeded database. The agent findings on screen were computed while the camera
-  was rolling. Captions are generated from when the script actually narrated each
-  beat, so re-recording on a slower machine re-times them; a click that misses or
-  an agent run that does not complete fails the recording rather than producing a
-  confident video of a page where nothing happened.
-- **Film** — 0:53, narrated and scored (`pnpm video:voice && pnpm video:film`).
-  The narration is synthesised first, with Kokoro-82M running locally, and the
-  picture is cut to it: `film.html` holds each scene for exactly as long as its
-  line came out. Edit a sentence, re-run the voice, and the film re-times itself.
-  The score is synthesised too, as a function of the running time, so it is
-  always exactly as long as the film.
+The one piece that does not fit a serverless host is the worker's clock, and it
+is solved rather than worked around. Agent runs already execute inline when
+there is no worker, and the daily intake became `GET /api/cron/intake` — secret-
+gated, idempotent for the day, and carrying a time budget so it stops cleanly
+between connectors inside the platform's function limit and reports what it did
+not reach. So the whole platform is one Next.js deployment plus a database.
 
-No stock footage and no generated imagery in either. Every number on screen is
-one this repository can produce.
+`Dockerfile` (targets `web` and `worker`) and `render.yaml` describe the same
+application for anywhere with real processes — a VPS, Fly.io, or a paid Render
+plan. Running the worker and the cron endpoint at once is safe: the daily rule
+reads the last recorded run from the database rather than an in-process timer,
+so they cannot ingest twice.
+
+Two refusals worth knowing about before your first deploy: the app **will not
+start in production** while `APP_SECRET` is still the documented development
+value, and `/api/cron/intake` answers `404` until `CRON_SECRET` is set.
 
 ## Testing
 

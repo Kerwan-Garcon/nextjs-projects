@@ -104,3 +104,23 @@ export function fingerprint(value: string): string {
   }
   return (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).slice(0, 16);
 }
+
+/**
+ * Constant-time string comparison for shared secrets.
+ *
+ * `a === b` on a token returns as soon as two bytes differ, and the time it
+ * took is a measurement of how much of the secret the caller guessed right.
+ * This is pure rather than `crypto.timingSafeEqual` so it runs unchanged in
+ * every environment the domain package targets, including the edge.
+ */
+export function timingSafeEqualString(a: string, b: string): boolean {
+  // Lengths are compared in the open: the length of a secret is not secret, and
+  // hashing to a fixed width first would hide it at the cost of clarity.
+  if (a.length !== b.length) return false;
+
+  let difference = 0;
+  for (let index = 0; index < a.length; index += 1) {
+    difference |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  }
+  return difference === 0;
+}

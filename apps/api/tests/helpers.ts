@@ -27,6 +27,17 @@ export interface Harness {
   request: (path: string, init?: RequestInit) => Promise<Response>;
   json: <T>(path: string, init?: RequestInit) => Promise<T>;
   signIn: (handle: string) => Promise<string>;
+  /**
+   * The same database and the same seed, behind an app built with different
+   * configuration. Some behaviour - whether a provider is offered at all,
+   * whether a scheduled endpoint exists - is a function of the environment
+   * rather than of the request, and re-seeding a shared database to test it
+   * would take the data out from under every test that follows.
+   */
+  withEnv: (overrides: Record<string, string>) => {
+    request: (path: string, init?: RequestInit) => Promise<Response>;
+    json: <T>(path: string, init?: RequestInit) => Promise<T>;
+  };
   close: () => Promise<void>;
 }
 
@@ -81,6 +92,33 @@ export async function createHarness(options: { seedResearch?: boolean } = {}): P
     return cookie;
   };
 
+  const withEnv = (overrides: Record<string, string>) => {
+    const scoped = createApp(
+      createContext({
+        db,
+        env: readEnv({
+          ...process.env,
+          NODE_ENV: 'test',
+          DATABASE_URL: TEST_DATABASE_URL,
+          APP_SECRET: 'test-secret-value-for-sessions',
+          ...overrides,
+        }),
+        provider: new DeterministicProvider(),
+        queue: new InMemoryQueue(),
+        rateLimiter: new MemoryRateLimiter(),
+      }),
+    );
+
+    const scopedRequest = (path: string, init: RequestInit = {}): Promise<Response> =>
+      scoped.request(new Request(`${ORIGIN}${path}`, init));
+
+    return {
+      request: scopedRequest,
+      json: async <T>(path: string, init: RequestInit = {}): Promise<T> =>
+        (await scopedRequest(path, init)).json() as Promise<T>,
+    };
+  };
+
   return {
     app,
     ctx,
@@ -89,6 +127,7 @@ export async function createHarness(options: { seedResearch?: boolean } = {}): P
     request,
     json,
     signIn,
+    withEnv,
     close: async () => {
       await db.destroy();
       await pool.end().catch(() => undefined);

@@ -9,6 +9,7 @@ export * from './domain/problem-validation.js';
 export * from './domain/similarity.js';
 export * from './domain/intake.js';
 export * from './domain/hypothesis-lifecycle.js';
+export * from './domain/schedule.js';
 export * from './security/url.js';
 export * from './security/text.js';
 export * from './security/sha256.js';
