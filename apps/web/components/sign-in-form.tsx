@@ -108,7 +108,7 @@ export function SignInForm({
             value={handle}
             onChange={(event) => setHandle(event.target.value)}
             required
-            pattern="[a-z0-9][a-z0-9_-]{2,31}"
+            pattern="[a-z0-9][a-z0-9_\-]{2,31}"
             placeholder="lowercase, 3-32 characters"
             className="mono w-full border border-line bg-ground px-3 py-2 text-[13px] outline-none focus:border-signal/60"
           />

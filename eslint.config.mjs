@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import prettier from 'eslint-config-prettier';
 
@@ -38,6 +39,16 @@ export default tseslint.config(
     rules: {
       // React components legitimately use undeclared globals from the DOM lib.
       'no-undef': 'off',
+    },
+  },
+  {
+    // The video recorders are plain Node ESM scripts that also evaluate code
+    // inside a page, so they legitimately see both realms' globals.
+    files: ['tools/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...globals.node, ...globals.browser },
     },
   },
 );

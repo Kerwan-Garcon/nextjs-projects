@@ -508,6 +508,24 @@ least three distinct sources, at least one high-reliability publisher, at least
 one _quantified_ consequence traceable to a source, measurable success criteria,
 and constraints on at least two dimensions.
 
+## Video
+
+Two films, both produced by driving the real application rather than by editing
+footage. `tools/video/` holds the recorders and `tools/video/README.md` explains
+how to run them.
+
+- **Walkthrough** (`pnpm video:demo`) signs in, reads a problem, posts a
+  counterargument and runs the four-agent pipeline against the seeded database.
+  The agent findings on screen were computed while the camera was rolling.
+  Captions are generated from when the script actually narrated each beat, so
+  re-recording on a slower machine re-times them with it, and a click that
+  misses or an agent run that does not complete fails the recording rather than
+  producing a confident video of a page where nothing happened.
+- **Reel** (`pnpm video:reel`) is `tools/video/reel.html` — a page composed from
+  the product's own design tokens and its own screenshots, animated in the
+  browser and recorded. There is no stock footage and no generated imagery in
+  it, and every number it shows is one this repository can produce.
+
 ---
 
 ## Testing

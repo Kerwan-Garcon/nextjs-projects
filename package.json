@@ -27,7 +27,11 @@
     "verify": "pnpm typecheck && pnpm lint && pnpm test",
     "services": "bash scripts/dev-services.sh",
     "check:sources": "pnpm --filter @saveus/db check:sources",
-    "intake": "pnpm --filter @saveus/worker intake"
+    "intake": "pnpm --filter @saveus/worker intake",
+    "video:shots": "node tools/video/shots.mjs",
+    "video:demo": "node tools/video/demo.mjs",
+    "video:reel": "node tools/video/reel.mjs",
+    "video:preview": "node tools/video/preview.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
@@ -35,6 +39,7 @@
     "@types/node": "^22.13.4",
     "eslint": "^9.20.1",
     "eslint-config-prettier": "^10.0.1",
+    "globals": "^17.12.0",
     "playwright": "^1.63.0",
     "prettier": "^3.5.1",
     "tsx": "^4.19.2",

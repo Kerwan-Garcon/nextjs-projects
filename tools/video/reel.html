@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>SAVE US</title>
+<style>
+/*
+ * The promotional reel.
+ *
+ * Built from the product's own design tokens and its own screenshots. There is
+ * no stock footage and no generated imagery in it, because the product's first
+ * rule is that nothing on screen should be prettier than it is true.
+ */
+:root {
+  --ground:#07090b; --panel:#0b0e12; --raised:#10141a;
+  --line:#1a212a; --line-strong:#28323d;
+  --ink:#e4eaf0; --muted:#8b98a7; --dim:#5b6774;
+  --signal:#5b9dff; --warn:#e0913c; --alert:#d9534f; --ok:#46a36b;
+  --fact:#e4eaf0; --claim:#5b9dff; --human:#a98be0; --ai:#e0a13c;
+  --inference:#4fbfa8; --unknown:#6e7a87;
+  --mono: ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;
+  --sans: ui-sans-serif,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1600px;height:900px;overflow:hidden;background:var(--ground);color:var(--ink);font-family:var(--sans)}
+
+/* A faint grid, the way an instrument panel has one. Never a gradient. */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:64px 64px;
+  -webkit-mask-image:radial-gradient(ellipse 70% 60% at 50% 50%,#000 20%,transparent 78%);
+          mask-image:radial-gradient(ellipse 70% 60% at 50% 50%,#000 20%,transparent 78%);
+}
+
+.scene{position:fixed;inset:0;z-index:1;display:flex;flex-direction:column;justify-content:center;padding:0 110px;opacity:0;visibility:hidden}
+.scene.on{opacity:1;visibility:visible}
+
+.rail{position:fixed;left:0;right:0;z-index:4;height:1px;background:var(--line)}
+.rail.top{top:56px} .rail.bottom{bottom:56px}
+.chrome{position:fixed;z-index:5;font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+.chrome.tl{top:30px;left:110px;color:var(--ink);letter-spacing:.3em}
+.chrome.tr{top:30px;right:110px}
+.chrome.bl{bottom:30px;left:110px}
+.chrome.br{bottom:30px;right:110px}
+.chrome.hidden{opacity:0}
+
+h1{font-size:76px;line-height:1.06;font-weight:600;letter-spacing:-.022em}
+h2{font-size:52px;line-height:1.14;font-weight:550;letter-spacing:-.016em}
+.lede{font-size:27px;line-height:1.5;color:var(--muted);max-width:1040px;font-weight:400}
+.kicker{font-family:var(--mono);font-size:13px;letter-spacing:.26em;text-transform:uppercase;color:var(--signal);margin-bottom:26px}
+.dim{color:var(--dim)}
+.mono{font-family:var(--mono)}
+
+.up{animation:up .62s cubic-bezier(.2,.7,.25,1) both}
+.scene.on .d1{animation-delay:.10s}.scene.on .d2{animation-delay:.26s}
+.scene.on .d3{animation-delay:.42s}.scene.on .d4{animation-delay:.58s}
+.scene.on .d5{animation-delay:.74s}.scene.on .d6{animation-delay:.90s}
+@keyframes up{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+
+.caret{display:inline-block;width:15px;height:.92em;background:var(--signal);vertical-align:-.1em;margin-left:8px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* Screenshot slab: shown as a real screen, in a frame, never a floating mockup. */
+.shot{position:absolute;border:1px solid var(--line-strong);background:var(--panel);overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.72)}
+.shot img{display:block;width:104%;margin-left:-2%}
+.shot::after{content:attr(data-src);position:absolute;left:0;right:0;bottom:0;padding:7px 12px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);
+  background:linear-gradient(to top,rgba(7,9,11,.97),rgba(7,9,11,0))}
+.pan img{animation:pan 9s linear both}
+@keyframes pan{from{transform:translateY(0)}to{transform:translateY(var(--pan,-42%))}}
+
+/* Epistemic chips: the real six, in the real colours. */
+.chips{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);max-width:1180px}
+.chip{background:var(--panel);padding:24px 26px}
+.chip .k{font-family:var(--mono);font-size:14px;letter-spacing:.16em;text-transform:uppercase;display:flex;align-items:center;gap:11px}
+.chip .k::before{content:'';width:4px;height:19px;background:currentColor}
+.chip p{margin-top:11px;font-size:17px;line-height:1.45;color:var(--muted)}
+
+.agents{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);max-width:1290px}
+.agent{background:var(--panel);padding:19px 20px;min-height:104px}
+.agent .n{font-family:var(--mono);font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
+.agent .m{margin-top:8px;font-size:14.5px;line-height:1.42;color:var(--dim)}
+
+.flow{display:flex;align-items:stretch;gap:1px;background:var(--line);border:1px solid var(--line);max-width:1290px}
+.step{background:var(--panel);padding:20px 22px;flex:1}
+.step .num{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--dim)}
+.step .t{margin-top:9px;font-family:var(--mono);font-size:14.5px;letter-spacing:.1em;text-transform:uppercase}
+.step.human{background:var(--raised)} .step.human .t{color:var(--ok)}
+
+.counter{display:flex;align-items:baseline;gap:30px;font-family:var(--mono)}
+.counter .big{font-size:132px;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}
+.counter .arrow{font-size:46px;color:var(--dim)}
+.counter .unit{font-size:17px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim)}
+
+.bars{display:flex;flex-direction:column;gap:12px;max-width:1080px;margin-top:38px}
+.bar{display:grid;grid-template-columns:210px 1fr 132px;align-items:center;gap:22px;
+  font-family:var(--mono);font-size:14.5px;letter-spacing:.06em}
+.bar .track{height:15px;background:var(--raised);border:1px solid var(--line);display:flex}
+.bar .seg{width:0;transition:width 1.2s cubic-bezier(.2,.7,.25,1)}
+.bar .seg.refused{background:var(--line-strong)}
+.bar .seg.kept{background:var(--ok);box-shadow:0 0 12px rgba(70,163,107,.55)}
+.bar .v{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.bar .v em{font-style:normal;color:var(--ok)}
+
+.stats{display:flex;gap:1px;background:var(--line);border:1px solid var(--line);max-width:1290px}
+.stat{background:var(--panel);padding:24px 28px;flex:1}
+.stat .v{font-family:var(--mono);font-size:44px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stat .l{margin-top:7px;font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+
+.end{align-items:center;text-align:center;justify-content:center}
+.wordmark{font-family:var(--mono);font-size:104px;letter-spacing:.34em;font-weight:500;text-indent:.34em}
+.rule{width:150px;height:1px;background:var(--line-strong);margin:40px auto}
+</style>
+</head>
+<body>
+<div class="rail top"></div><div class="rail bottom"></div>
+<div class="chrome tl" id="wm">SAVE US</div>
+<div class="chrome tr" id="ch-tr"></div>
+<div class="chrome bl" id="ch-bl"></div>
+<div class="chrome br">A COLLABORATIVE RESEARCH PLATFORM</div>
+
+<!-- 1 -->
+<section class="scene" id="s1">
+  <h1 class="mono" style="font-size:62px;letter-spacing:-.01em">
+    <span id="t1"></span><span class="caret" id="c1"></span>
+  </h1>
+  <h1 class="mono" style="font-size:62px;letter-spacing:-.01em;margin-top:22px;color:var(--signal)">
+    <span id="t2"></span><span class="caret" id="c2" style="display:none"></span>
+  </h1>
+</section>
+
+<!-- 2 -->
+<section class="scene" id="s2">
+  <h2 class="up d1">Humanity has enormous intelligence<br />distributed across billions of people.</h2>
+  <h2 class="up d3" style="margin-top:34px;color:var(--dim)">We currently waste most of it.</h2>
+</section>
+
+<!-- 3 -->
+<section class="scene" id="s3">
+  <div style="display:grid;grid-template-columns:430px 1fr;gap:64px;align-items:center">
+    <div>
+      <div class="kicker up d1">The board</div>
+      <h2 class="up d2" style="font-size:44px">Problems, stated<br />properly.</h2>
+      <p class="lede up d3" style="margin-top:26px;font-size:23px">
+        Quantified consequences. Constraints. Success criteria somebody could
+        actually measure. Not a topic — a problem.
+      </p>
+    </div>
+    <div style="position:relative;height:720px">
+      <div class="shot pan up d2" data-src="/problems" style="inset:0;--pan:-34%">
+        <img src="shots/board.png" alt="" />
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="scene" id="s4">
+  <div class="kicker up d1">The rule everything follows from</div>
+  <h2 class="up d1" style="font-size:40px;margin-bottom:34px">
+    Six kinds of statement. None of them looks like another.
+  </h2>
+  <div class="chips">
+    <div class="chip up d2" style="color:var(--fact)"><div class="k">Fact</div><p>Measured. Carries a source or it is not one.</p></div>
+    <div class="chip up d2" style="color:var(--claim)"><div class="k">Source claim</div><p>What a publication asserts. Attributed to it.</p></div>
+    <div class="chip up d3" style="color:var(--human)"><div class="k">Human hypothesis</div><p>A person's proposal. Argued, not asserted.</p></div>
+    <div class="chip up d3" style="color:var(--ai)"><div class="k">AI hypothesis</div><p>A machine's proposal. Marked as such, always.</p></div>
+    <div class="chip up d4" style="color:var(--inference)"><div class="k">Inference</div><p>Derived. The derivation is shown.</p></div>
+    <div class="chip up d4" style="color:var(--unknown)"><div class="k">Unknown</div><p>Admitted. The product says so out loud.</p></div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section class="scene" id="s5">
+  <div style="display:grid;grid-template-columns:1fr 470px;gap:64px;align-items:center">
+    <div style="position:relative;height:720px">
+      <div class="shot pan up d1" data-src="/hypotheses" style="inset:0;--pan:-40%">
+        <img src="shots/hypothesis.png" alt="" />
+      </div>
+    </div>
+    <div>
+      <div class="kicker up d2">Hypotheses</div>
+      <h2 class="up d2" style="font-size:44px">An object you<br />can attack.</h2>
+      <p class="lede up d3" style="margin-top:26px;font-size:23px">
+        Claim, mechanism, required assumptions, unknowns, risks — declared up
+        front. Supporting and contradicting evidence sit side by side.
+      </p>
+      <p class="lede up d4" style="margin-top:22px;font-size:21px;color:var(--dim)">
+        Attacking an idea well is what earns standing here.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="scene" id="s6">
+  <div class="kicker up d1">The agents</div>
+  <h2 class="up d1" style="font-size:40px;margin-bottom:32px">
+    Eleven narrow agents. Not one omnipotent one.
+  </h2>
+  <div class="agents">
+    <div class="agent up d2"><div class="n">Scout</div><div class="m">Surfaces unsolved situations</div></div>
+    <div class="agent up d2"><div class="n">Researcher</div><div class="m">Retrieves what bears on a claim</div></div>
+    <div class="agent up d2"><div class="n">Synthesizer</div><div class="m">States the question, readably</div></div>
+    <div class="agent up d2"><div class="n">Scientist</div><div class="m">Checks the mechanism</div></div>
+    <div class="agent up d3"><div class="n">Engineer</div><div class="m">Could it be built and deployed</div></div>
+    <div class="agent up d3"><div class="n">Economist</div><div class="m">Cost, and who pays</div></div>
+    <div class="agent up d3"><div class="n">Skeptic</div><div class="m">Finds the weaknesses</div></div>
+    <div class="agent up d3"><div class="n">Red team</div><div class="m">Tries to break the hypothesis</div></div>
+    <div class="agent up d4"><div class="n">Simulator</div><div class="m">Runs the models that exist</div></div>
+    <div class="agent up d4"><div class="n">Editor</div><div class="m">Clarity without changing meaning</div></div>
+    <div class="agent up d4"><div class="n">Curator</div><div class="m">Eligibility only. Never publication</div></div>
+    <div class="agent up d4" style="background:var(--raised)"><div class="n" style="color:var(--ok)">None of them</div><div class="m">can mark anything validated</div></div>
+  </div>
+</section>
+
+<!-- 7 -->
+<section class="scene" id="s7">
+  <div class="kicker up d1">Daily intake</div>
+  <h2 class="up d1" style="font-size:40px">
+    It reads WHO, UNEP, the EEA, Nature,<br />The Lancet and Europe PMC every day.
+  </h2>
+  <div class="bars">
+    <div class="bar up d2"><span class="dim">institutional-feeds</span><span class="track"><span class="seg refused" data-w="84.3"></span><span class="seg kept" data-w="1.4"></span></span><span class="v">60 → <em>1</em></span></div>
+    <div class="bar up d3"><span class="dim">journal-feeds</span><span class="track"><span class="seg refused" data-w="72.9"></span><span class="seg kept" data-w="0"></span></span><span class="v">51 → <em>0</em></span></div>
+    <div class="bar up d4"><span class="dim">analysis-feeds</span><span class="track"><span class="seg refused" data-w="14.3"></span><span class="seg kept" data-w="2.9"></span></span><span class="v">12 → <em>2</em></span></div>
+    <div class="bar up d5"><span class="dim">europepmc</span><span class="track"><span class="seg refused" data-w="85.7"></span><span class="seg kept" data-w="14.3"></span></span><span class="v">70 → <em>10</em></span></div>
+  </div>
+  <p class="lede up d6" style="margin-top:40px;font-size:23px">
+    <span style="color:var(--ink)">193 documents fetched. 13 queued.</span>
+    That is the filter working — and every one it refused is stored with the
+    reason, where you can read it.
+  </p>
+</section>
+
+<!-- 8 -->
+<section class="scene" id="s8">
+  <div class="kicker up d1">And then it stops</div>
+  <h2 class="up d1" style="font-size:44px;margin-bottom:36px">Nothing publishes itself.</h2>
+  <div class="flow">
+    <div class="step up d2"><div class="num">01</div><div class="t">Fetch</div></div>
+    <div class="step up d2"><div class="num">02</div><div class="t">Assess</div></div>
+    <div class="step up d3"><div class="num">03</div><div class="t">Extract</div></div>
+    <div class="step up d3"><div class="num">04</div><div class="t">Draft</div></div>
+    <div class="step human up d4"><div class="num">05</div><div class="t">Curate · human</div></div>
+    <div class="step human up d5"><div class="num">06</div><div class="t">Publish · human</div></div>
+  </div>
+  <p class="lede up d6" style="margin-top:38px;font-size:23px">
+    A model can put a candidate in a queue. A person writes the problem
+    statement, and the publication checklist runs again on the server against
+    exactly what they wrote.
+  </p>
+</section>
+
+<!-- 9 -->
+<section class="scene" id="s9">
+  <div class="kicker up d1">Running now</div>
+  <h2 class="up d1" style="font-size:40px;margin-bottom:34px">Open source. Seeded with real sources.</h2>
+  <div class="stats">
+    <div class="stat up d2"><div class="v">21</div><div class="l">Open problems</div></div>
+    <div class="stat up d2"><div class="v">141</div><div class="l">Real sources</div></div>
+    <div class="stat up d3"><div class="v">53</div><div class="l">Hypotheses</div></div>
+    <div class="stat up d3"><div class="v">11</div><div class="l">Agents</div></div>
+    <div class="stat up d4"><div class="v">196</div><div class="l">Tests passing</div></div>
+    <div class="stat up d4"><div class="v">0</div><div class="l">Invented citations</div></div>
+  </div>
+  <p class="lede up d5" style="margin-top:38px;font-size:22px">
+    Every seeded source points at a real publication and is link-checked by a
+    command you can run. Everything written for the demonstration is labelled
+    <span class="mono" style="color:var(--warn)">DEMO DATA</span> wherever it appears.
+  </p>
+</section>
+
+<!-- 10 -->
+<section class="scene end" id="s10">
+  <div class="wordmark up d1">SAVE US</div>
+  <div class="rule up d2"></div>
+  <h2 class="up d2" style="font-size:38px;font-weight:450">
+    AI might destroy us.<br /><span style="color:var(--signal)">Let's make it save us first.</span>
+  </h2>
+  <p class="mono up d4" style="margin-top:48px;font-size:19px;letter-spacing:.13em;color:var(--muted)">
+    github.com/Kerwan-Garcon/nextjs-projects
+  </p>
+  <p class="up d5" style="margin-top:16px;font-size:17px;color:var(--dim)">
+    Bring a problem. Bring a source. Bring the objection nobody wants to hear.
+  </p>
+</section>
+
+<script>
+/* The scene timeline. Durations are in milliseconds and the total is exact, so
+ * the recorder knows precisely when to stop. */
+const SCENES = [
+  { id: 's1',  ms: 7200,  tr: null,  bl: null },
+  { id: 's2',  ms: 5400,  tr: 'THE PREMISE', bl: null },
+  { id: 's3',  ms: 6600,  tr: 'THE BOARD', bl: '21 OPEN PROBLEMS' },
+  { id: 's4',  ms: 8200,  tr: 'EPISTEMIC LAYER', bl: 'THE CORE DIFFERENTIATOR' },
+  { id: 's5',  ms: 6600,  tr: 'HYPOTHESES', bl: 'STRUCTURED, NOT THREADED' },
+  { id: 's6',  ms: 7000,  tr: 'AGENT ARCHITECTURE', bl: 'SCOPED TOOLS · SCOPED WRITES' },
+  { id: 's7',  ms: 8000,  tr: 'INGESTION', bl: 'ONE CYCLE PER DAY' },
+  { id: 's8',  ms: 7400,  tr: 'CURATION', bl: 'PUBLICATION IS A HUMAN ACT' },
+  { id: 's9',  ms: 7000,  tr: 'THE BUILD', bl: 'MIT · TYPESCRIPT · POSTGRES' },
+  { id: 's10', ms: 7600,  tr: null, bl: null },
+];
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function typeInto(el, text, delay) {
+  for (const ch of text) { el.textContent += ch; await sleep(delay); }
+}
+
+async function scene1() {
+  const c1 = document.getElementById('c1');
+  const c2 = document.getElementById('c2');
+  await sleep(500);
+  await typeInto(document.getElementById('t1'), 'AI might destroy us.', 52);
+  await sleep(900);
+  c1.style.display = 'none';
+  c2.style.display = 'inline-block';
+  await typeInto(document.getElementById('t2'), "Let's make it save us first.", 52);
+}
+
+function fillBars() {
+  document.querySelectorAll('#s7 .seg').forEach((el) => { el.style.width = '0'; });
+  setTimeout(() => {
+    document.querySelectorAll('#s7 .seg').forEach((el) => {
+      el.style.width = el.dataset.w + '%';
+    });
+  }, 750);
+}
+
+window.__reelDone = false;
+window.__reelTotal = SCENES.reduce((sum, s) => sum + s.ms, 0);
+
+window.__playReel = async () => {
+  const tr = document.getElementById('ch-tr');
+  const bl = document.getElementById('ch-bl');
+  const wm = document.getElementById('wm');
+
+  for (const scene of SCENES) {
+    const el = document.getElementById(scene.id);
+    tr.textContent = scene.tr ?? '';
+    bl.textContent = scene.bl ?? '';
+    wm.classList.toggle('hidden', scene.id === 's10');
+
+    // Re-trigger the entrance animations each time a scene is shown.
+    el.querySelectorAll('.up, .pan img').forEach((node) => {
+      node.style.animation = 'none';
+      void node.offsetWidth;
+      node.style.animation = '';
+    });
+    el.classList.add('on');
+
+    if (scene.id === 's1') await scene1();
+    if (scene.id === 's7') fillBars();
+
+    await sleep(scene.id === 's1' ? scene.ms - 2900 : scene.ms);
+    el.classList.remove('on');
+    await sleep(90);
+  }
+  window.__reelDone = true;
+};
+</script>
+</body>
+</html>

@@ -17,3 +17,8 @@ blob-report/
 
 # Local service state
 *.pid
+
+# Recorded video output and the stills it is built from
+tools/video/out/
+tools/video/shots/
+tools/video/preview/
