@@ -14,7 +14,9 @@
     "migrate": "tsx src/cli/migrate.ts",
     "reset": "tsx src/cli/reset.ts",
     "seed": "tsx src/cli/seed.ts",
-    "check:sources": "tsx src/cli/check-sources.ts"
+    "check:sources": "tsx src/cli/check-sources.ts",
+    "loadgen": "tsx src/cli/loadgen.ts",
+    "loadgen:clear": "tsx src/cli/loadgen-clear.ts"
   },
   "dependencies": {
     "@saveus/common": "workspace:*",

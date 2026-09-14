@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   MemoryRateLimiter,
-  RATE_LIMITS,
+  DEFAULT_RATE_LIMITS,
+  resolveRateLimits,
   asUntrustedBlock,
   fingerprint,
   normalizeTitle,
@@ -77,8 +78,8 @@ describe('rate limiting', () => {
   });
 
   it('limits agent runs more strictly than reads', () => {
-    expect(RATE_LIMITS.agentRun.limit).toBeLessThan(RATE_LIMITS.write.limit);
-    expect(RATE_LIMITS.write.limit).toBeLessThan(RATE_LIMITS.read.limit);
+    expect(DEFAULT_RATE_LIMITS.agentRun.limit).toBeLessThan(DEFAULT_RATE_LIMITS.write.limit);
+    expect(DEFAULT_RATE_LIMITS.write.limit).toBeLessThan(DEFAULT_RATE_LIMITS.read.limit);
   });
 });
 
@@ -111,5 +112,32 @@ describe('the in-memory rate limiter', () => {
     expect((await limiter.check('k', 1, 1)).allowed).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 5));
     expect((await limiter.check('k', 1, 1)).allowed).toBe(true);
+  });
+});
+
+describe('rate limits are a deployment decision', () => {
+  it('uses the documented defaults when nothing is configured', () => {
+    expect(resolveRateLimits({})).toEqual(DEFAULT_RATE_LIMITS);
+  });
+
+  it('takes the numbers the environment gives it', () => {
+    const limits = resolveRateLimits({
+      RATE_LIMIT_READ_PER_MINUTE: '5000',
+      RATE_LIMIT_WRITE_PER_MINUTE: '90',
+      RATE_LIMIT_AGENT_RUNS_PER_MINUTE: '3',
+    });
+
+    expect(limits.read.limit).toBe(5000);
+    expect(limits.write.limit).toBe(90);
+    expect(limits.agentRun.limit).toBe(3);
+  });
+
+  it('ignores values that would disable the limit rather than trusting them', () => {
+    // A misconfigured `0` or `-1` must not read as "no limit at all".
+    for (const bad of ['0', '-1', 'lots', '', 'NaN']) {
+      expect(resolveRateLimits({ RATE_LIMIT_READ_PER_MINUTE: bad }).read.limit).toBe(
+        DEFAULT_RATE_LIMITS.read.limit,
+      );
+    }
   });
 });

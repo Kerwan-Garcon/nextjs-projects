@@ -533,29 +533,25 @@ how to run them.
 
 ---
 
-## Deploying
+## Under load
 
-**Vercel Hobby for the app, Neon free for the database.** Free, no card, and the
-only free combination in which every part of this platform has a home.
-[`docs/DEPLOY.md`](docs/DEPLOY.md) is the step-by-step, the comparison against
-Render, Fly and the rest, and the list of things that will bite you.
+Measured, not assumed — [`docs/SCALING.md`](docs/SCALING.md) has the numbers and
+how to reproduce them with `pnpm --filter @saveus/db loadgen` and
+`node tools/bench/http.mjs`.
 
-The one piece that does not fit a serverless host is the worker's clock, and it
-is solved rather than worked around. Agent runs already execute inline when
-there is no worker, and the daily intake became `GET /api/cron/intake` — secret-
-gated, idempotent for the day, and carrying a time budget so it stops cleanly
-between connectors inside the platform's function limit and reports what it did
-not reach. So the whole platform is one Next.js deployment plus a database.
+The board's activity sort was 556 ms on 5 000 problems, because ordering by
+`max(created_at)` has to evaluate the subquery for every candidate row before
+anything can be sorted — so the `LIMIT` saved nothing and the cost grew with the
+product of problems and contributions. The counts now live on the problem row,
+maintained by triggers and checked against the computed truth by the test suite:
+**556 ms to 0.63 ms**. Search went from a sequential scan to a trigram index,
+12.2 ms to 0.19 ms.
 
-`Dockerfile` (targets `web` and `worker`) and `render.yaml` describe the same
-application for anywhere with real processes — a VPS, Fly.io, or a paid Render
-plan. Running the worker and the cron endpoint at once is safe: the daily rule
-reads the last recorded run from the database rather than an in-process timer,
-so they cannot ingest twice.
-
-Two refusals worth knowing about before your first deploy: the app **will not
-start in production** while `APP_SECRET` is still the documented development
-value, and `/api/cron/intake` answers `404` until `CRON_SECRET` is set.
+After that the database is no longer the bottleneck — unloaded, every endpoint
+answers in single-digit milliseconds, and under concurrency latency rises while
+throughput does not, which is a saturated CPU rather than slow SQL. The levers
+that remain are the shared-cache headers on the public board and more instances,
+not more indexes.
 
 ## Testing
 

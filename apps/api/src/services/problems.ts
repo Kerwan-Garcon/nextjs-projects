@@ -56,18 +56,24 @@ interface AggregateRow {
 }
 
 /**
- * One query with correlated subqueries. Kept as raw SQL because the aggregate
- * shape is the point, and hand-rolling it in the builder would obscure it.
+ * The board query.
+ *
+ * It used to compute five correlated subqueries per row. That is fine while the
+ * sort can stop early and ruinous the moment it cannot: ordering by activity
+ * meant evaluating `max(created_at)` for every candidate before anything could
+ * be sorted, which measured 556 ms on five thousand problems and grows with the
+ * product of problems and contributions.
+ *
+ * The counts now live on the row, maintained by triggers, so this reads them.
+ * The two remaining subqueries are domain lookups against a primary key, which
+ * the LIMIT does bound.
  */
 function aggregateSelect() {
   return sql<AggregateRow>`
     SELECT p.id, p.ref, p.slug, p.title, p.summary, p.geography_label, p.geography_scale,
            p.country_code, p.difficulty, p.urgency, p.status, p.origin, p.updated_at,
-           (SELECT count(*) FROM problem_sources ps WHERE ps.problem_id = p.id)::int AS evidence_count,
-           (SELECT count(*) FROM hypotheses h WHERE h.problem_id = p.id)::int AS hypothesis_count,
-           (SELECT count(DISTINCT c.author_id) FROM contributions c WHERE c.problem_id = p.id)::int AS researcher_count,
-           (SELECT count(*) FROM contributions c WHERE c.problem_id = p.id)::int AS contribution_count,
-           (SELECT max(c.created_at) FROM contributions c WHERE c.problem_id = p.id) AS last_activity_at,
+           p.evidence_count, p.hypothesis_count, p.researcher_count, p.contribution_count,
+           p.last_activity_at,
            (SELECT array_agg(pd.domain_key ORDER BY pd.is_primary DESC) FROM problem_domains pd WHERE pd.problem_id = p.id) AS domain_keys,
            (SELECT pd.domain_key FROM problem_domains pd WHERE pd.problem_id = p.id AND pd.is_primary LIMIT 1) AS primary_domain
     FROM problems p
@@ -110,7 +116,7 @@ export async function listProblems(db: Db, filter: ProblemFilterInput): Promise<
   const order = {
     urgency: sql`p.urgency DESC, p.difficulty DESC`,
     difficulty: sql`p.difficulty DESC, p.urgency DESC`,
-    activity: sql`last_activity_at DESC NULLS LAST`,
+    activity: sql`p.last_activity_at DESC NULLS LAST`,
     recent: sql`p.created_at DESC`,
   }[filter.sort];
 

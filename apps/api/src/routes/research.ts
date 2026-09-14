@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { AppError, Id, RATE_LIMITS, ResearchAction, sanitizeUntrusted } from '@saveus/common';
+import { AppError, Id,  ResearchAction, sanitizeUntrusted } from '@saveus/common';
 import { requireUser, type ApiEnv } from '../app.js';
 import {
   getSession,
@@ -64,8 +64,8 @@ export function researchRoutes() {
 
       const decision = await ctx.rateLimiter.check(
         `agent:${user.id}`,
-        RATE_LIMITS.agentRun.limit,
-        RATE_LIMITS.agentRun.windowMs,
+        ctx.limits.agentRun.limit,
+        ctx.limits.agentRun.windowMs,
       );
       if (!decision.allowed) {
         throw new AppError(

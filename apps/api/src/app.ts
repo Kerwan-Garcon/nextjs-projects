@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getCookie } from 'hono/cookie';
-import { AppError, HTTP_STATUS, RATE_LIMITS, type RateLimitDecision } from '@saveus/common';
+import { AppError, HTTP_STATUS, type RateLimitDecision } from '@saveus/common';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { SESSION_COOKIE, resolveSession, type SessionUser } from './auth.js';
 import { createContext, type AppContext } from './context.js';
@@ -53,8 +53,8 @@ export function createApp(context: AppContext = createContext()) {
   app.use('*', async (c, next) => {
     const decision = await context.rateLimiter.check(
       `read:${callerIdentity(c)}`,
-      RATE_LIMITS.read.limit,
-      RATE_LIMITS.read.windowMs,
+      context.limits.read.limit,
+      context.limits.read.windowMs,
     );
     applyRateLimitHeaders(c, decision);
 
@@ -176,8 +176,8 @@ export function requireUser(user: SessionUser | null): SessionUser {
 export async function enforceWriteLimit(context: AppContext, identity: string): Promise<void> {
   const decision = await context.rateLimiter.check(
     `write:${identity}`,
-    RATE_LIMITS.write.limit,
-    RATE_LIMITS.write.windowMs,
+    context.limits.write.limit,
+    context.limits.write.windowMs,
   );
   if (!decision.allowed) {
     throw new AppError(

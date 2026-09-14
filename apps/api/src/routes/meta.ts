@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import {
+  CACHE_TTL,
   CONFIDENCE_DESCRIPTORS,
   EPISTEMIC_DESCRIPTORS,
   HypothesisStatus,
@@ -29,11 +30,25 @@ export function metaRoutes() {
   });
 
   routes.get('/meta', async (c) => {
-    const { db, provider } = c.get('ctx');
+    const { db, provider, cache } = c.get('ctx');
+
+    // These two are the reason this endpoint was expensive: six counts across
+    // the whole database, and the reference tables, on every page render
+    // because the header shows the counters. Both tolerate being a minute old;
+    // neither is part of any claim the platform makes about evidence.
     const [domains, stats] = await Promise.all([
-      db.selectFrom('domains').selectAll().orderBy('sort_order').execute(),
-      platformStats(db),
+      cache.wrap('meta:domains', CACHE_TTL.reference, () =>
+        db.selectFrom('domains').selectAll().orderBy('sort_order').execute(),
+      ),
+      cache.wrap('meta:stats', CACHE_TTL.platformStats, () => platformStats(db)),
     ]);
+
+    // The board is public and identical for everybody, so a shared cache in
+    // front of it absorbs the traffic the database would otherwise see.
+    c.header(
+      'Cache-Control',
+      `public, max-age=0, s-maxage=${Math.round(CACHE_TTL.platformStats / 1000)}, stale-while-revalidate=300`,
+    );
 
     return c.json({
       stats,

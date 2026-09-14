@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { MemoryRateLimiter, RATE_LIMITS } from '@saveus/common';
+import { MemoryRateLimiter, resolveRateLimits } from '@saveus/common';
 import { resolveConnectors, runIngestion, runIngestionCycle } from '@saveus/agents';
 import { createHarness, postJson, withCookie, type Harness } from './helpers.js';
 
@@ -667,10 +667,125 @@ describe('ingestion', () => {
  * has to be at least as careful as the worker was: unauthenticated callers get
  * nothing, and it will not run twice in a day.
  */
+/**
+ * Denormalised counters drift. That is the whole risk of moving them onto the
+ * row, and the only defence is checking them against the truth after real
+ * writes rather than after a backfill.
+ */
+describe('activity counters stay true', () => {
+  const truth = async () =>
+    harness.db
+      .selectFrom('problems as p')
+      .select((eb) => [
+        'p.id',
+        'p.contribution_count',
+        'p.researcher_count',
+        'p.hypothesis_count',
+        'p.evidence_count',
+        'p.last_activity_at',
+        eb
+          .selectFrom('contributions as c')
+          .whereRef('c.problem_id', '=', 'p.id')
+          .select((e) => e.fn.countAll<number>().as('n'))
+          .as('actual_contributions'),
+        eb
+          .selectFrom('contributions as c')
+          .whereRef('c.problem_id', '=', 'p.id')
+          .select((e) => e.fn.count<number>('c.author_id').distinct().as('n'))
+          .as('actual_researchers'),
+        eb
+          .selectFrom('hypotheses as h')
+          .whereRef('h.problem_id', '=', 'p.id')
+          .select((e) => e.fn.countAll<number>().as('n'))
+          .as('actual_hypotheses'),
+        eb
+          .selectFrom('problem_sources as s')
+          .whereRef('s.problem_id', '=', 'p.id')
+          .select((e) => e.fn.countAll<number>().as('n'))
+          .as('actual_evidence'),
+      ])
+      .execute();
+
+  const mismatches = (rows: Awaited<ReturnType<typeof truth>>) =>
+    rows
+      .filter(
+        (row) =>
+          Number(row.contribution_count) !== Number(row.actual_contributions) ||
+          Number(row.researcher_count) !== Number(row.actual_researchers) ||
+          Number(row.hypothesis_count) !== Number(row.actual_hypotheses) ||
+          Number(row.evidence_count) !== Number(row.actual_evidence),
+      )
+      .map((row) => row.id);
+
+  it('matches the seeded truth on every problem', async () => {
+    expect(mismatches(await truth())).toEqual([]);
+  });
+
+  it('still matches after contributions, evidence and a hypothesis go through the API', async () => {
+    const cookie = await harness.signIn('w-osei');
+    const before = (await truth()).find((row) => row.id === problemId);
+
+    // Two contributions from one author: the count moves by two, the distinct
+    // researcher count by at most one.
+    for (const body of [
+      'A first counterargument, long enough to pass validation and reach the counter behind it.',
+      'A second one from the same author, which must not count as a second researcher.',
+    ]) {
+      const response = await harness.request(
+        '/api/contributions',
+        postJson(
+          { kind: 'COMMENT', targetType: 'PROBLEM', targetId: problemId, body },
+          cookie,
+        ),
+      );
+      expect(response.status).toBe(201);
+    }
+
+    const rows = await truth();
+    expect(mismatches(rows)).toEqual([]);
+
+    const after = rows.find((row) => row.id === problemId);
+    expect(Number(after?.contribution_count)).toBe(Number(before?.contribution_count) + 2);
+    expect(Number(after?.researcher_count)).toBeLessThanOrEqual(
+      Number(before?.researcher_count) + 1,
+    );
+    // Activity is what the board sorts on; a write that does not move it is a
+    // problem that silently sinks.
+    expect(after?.last_activity_at).not.toBeNull();
+  });
+
+  it('is what the board actually serves', async () => {
+    const { problems } = await harness.json<{
+      problems: { id: string; contributionCount: number; researcherCount: number }[];
+    }>('/api/problems?limit=50');
+
+    const rows = new Map((await truth()).map((row) => [row.id, row]));
+    for (const card of problems) {
+      const row = rows.get(card.id);
+      expect(card.contributionCount, card.id).toBe(Number(row?.actual_contributions));
+      expect(card.researcherCount, card.id).toBe(Number(row?.actual_researchers));
+    }
+  });
+
+  it('sorts by activity without recomputing it', async () => {
+    const { problems } = await harness.json<{ problems: { lastActivityAt: string | null }[] }>(
+      '/api/problems?sort=activity&limit=20',
+    );
+
+    const stamps = problems
+      .map((card) => card.lastActivityAt)
+      .filter((value): value is string => value !== null)
+      .map((value) => new Date(value).getTime());
+
+    expect(stamps.length).toBeGreaterThan(1);
+    expect([...stamps].sort((a, b) => b - a)).toEqual(stamps);
+  });
+});
+
 describe('rate limiting, end to end', () => {
   it('tells every response where it stands', async () => {
     const response = await harness.request('/api/meta');
-    expect(response.headers.get('RateLimit-Limit')).toBe(String(RATE_LIMITS.read.limit));
+    expect(response.headers.get('RateLimit-Limit')).toBe(String(resolveRateLimits().read.limit));
     expect(Number(response.headers.get('RateLimit-Remaining'))).toBeGreaterThanOrEqual(0);
     expect(Number(response.headers.get('RateLimit-Reset'))).toBeGreaterThan(0);
   });

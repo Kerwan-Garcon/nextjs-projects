@@ -10,13 +10,20 @@ import { listSessions } from '../services/research.js';
 export function problemRoutes() {
   const routes = new Hono<ApiEnv>();
 
+  /**
+   * Public, identical for every visitor, and the page most traffic lands on.
+   * A shared cache in front of it is what stops a burst reaching the database
+   * at all; the numbers on a board tolerate being seconds old.
+   */
   routes.get('/problems', zValidator('query', ProblemFilterInput), async (c) => {
+    c.header('Cache-Control', 'public, max-age=0, s-maxage=30, stale-while-revalidate=300');
     const { db } = c.get('ctx');
     const result = await listProblems(db, c.req.valid('query'));
     return c.json(result);
   });
 
   routes.get('/problems/:idOrSlug', async (c) => {
+    c.header('Cache-Control', 'public, max-age=0, s-maxage=30, stale-while-revalidate=300');
     const { db } = c.get('ctx');
     const problem = await getProblem(db, c.req.param('idOrSlug'));
     const [hypotheses, contributions, sessions] = await Promise.all([

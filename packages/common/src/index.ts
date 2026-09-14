@@ -14,4 +14,5 @@ export * from './security/url.js';
 export * from './security/text.js';
 export * from './security/sha256.js';
 export * from './security/rate-limit.js';
+export * from './cache/index.js';
 export * from './errors.js';
