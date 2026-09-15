@@ -1,15 +1,16 @@
 # Recording the videos
 
-Two films, both produced by driving the real application rather than by editing
-footage: a **product walkthrough** and a **narrated film**.
+Three, all produced by driving the real application rather than by editing
+footage: a **product walkthrough**, and two **narrated films** — one on the
+platform, one on the courses.
 
-Nothing in either is staged. The walkthrough signs in, reads a problem, posts a
-counterargument and runs the four-agent pipeline against the seeded database;
-the agent findings on screen were computed while the camera was rolling. The
-film is a page composed from the product's own design tokens and its own
-screenshots — there is no stock footage and no generated imagery in it, because
-the product's first rule is that nothing on screen should be prettier than it is
-true.
+Nothing in any of them is staged. The walkthrough signs in, reads a problem,
+posts a counterargument and runs the four-agent pipeline against the seeded
+database; the agent findings on screen were computed while the camera was
+rolling. The films are pages composed from the product's own design tokens and
+its own screenshots — there is no stock footage and no generated imagery in
+them, because the product's first rule is that nothing on screen should be
+prettier than it is true.
 
 ## Prerequisites
 
@@ -42,27 +43,44 @@ video of a page where nothing happened. That is not hypothetical: the first two
 takes did exactly that, because driving the mouse by coordinate does not wait
 for hydration and does not notice the sticky header sitting over the button.
 
-## Film — 0:53, narrated, scored
+## Films — narrated, scored
+
+Two of them, out of one pipeline. A **cut** is a page (`<cut>.html`) and a
+narration (`audio/script.<cut>.json`). Everything else — the stage in
+`stage.css`, the projector in `stage.js`, the recorder, the mix — is shared,
+which is what keeps two films looking like one product rather than two.
+
+| Cut     | Length | What it is                                                        |
+| ------- | ------ | ----------------------------------------------------------------- |
+| `film`  | 0:53   | The platform: the board, the epistemic layer, the agents, intake. |
+| `learn` | 0:52   | The courses: what they are, and what they deliberately do not do. |
 
 ```bash
 pnpm video:shots                       # stills, from the running app
-pnpm video:voice                       # narration, then the score
-pnpm video:preview                     # one PNG per scene, to review the cut
-pnpm video:film
+pnpm video:voice learn                 # narration, then the score
+pnpm video:preview learn               # one PNG per scene, to review the cut
+pnpm video:film learn
 FFMPEG=... tools/video/postprod.sh \
-  tools/video/out/film-raw.webm tools/video/out/film-silent.mp4 "" "$LEAD"
+  tools/video/out/learn-raw.webm tools/video/out/learn-silent.mp4 "" "$LEAD"
 FFMPEG=... tools/video/mix.sh \
-  tools/video/out/film-silent.mp4 tools/video/out/save-us-film.mp4
+  tools/video/out/learn-silent.mp4 tools/video/out/save-us-learn.mp4 learn
 ```
 
-`$LEAD` is `leadMs` from `tools/video/out/film.timing.json`, in seconds.
+`$LEAD` is `leadMs` from `tools/video/out/<cut>.timing.json`, in seconds. Drop
+the cut from every command to get `film`, which is what they default to.
+
+The courses film renders a statement the way the product renders one, in the
+same colours — including an UNKNOWN, held on screen for its own beat. Leaving
+the admitted gaps out of a promotional film would be the first step towards
+exactly the thing the product exists to avoid.
 
 **The voice is cut first and the picture follows it.** `audio/tts.py`
-synthesises each line of `audio/script.json` with Kokoro-82M, trims the silence
-Kokoro leaves at the ends, and writes `vo.json` — every line with the duration it
-actually came out at. `film.html` fetches that file and holds each scene for its
-line. Editing a sentence and re-running the voice re-cuts the film; nobody
-touches a timeline.
+synthesises each line of `audio/script.<cut>.json` with Kokoro-82M, trims the
+silence Kokoro leaves at the ends, and writes `out/<cut>/vo.json` — every line
+with the duration it actually came out at. The page fetches that file, working
+out which cut it is from its own filename, and holds each scene for its line.
+Editing a sentence and re-running the voice re-cuts the film; nobody touches a
+timeline.
 
 Three things that are easy to get wrong and are handled here:
 
@@ -87,13 +105,13 @@ a minute of speech in well under a minute.
 
 Local rather than hosted for a reason that matters here: the film's timing is
 derived from the voice, so the voice has to be regenerable. Swap it with
-`python3 tools/video/audio/tts.py am_fenrir` — the film re-times itself on the
-next take.
+`python3 tools/video/audio/tts.py film am_fenrir` — the film re-times itself on
+the next take.
 
 ### The score
 
 `audio/music.py` synthesises it from scratch, as a function of the running time,
-so it is always exactly as long as the film. A low drone, a pad through
+so it is always exactly as long as the film it is under. A low drone, a pad through
 i–VI–III–VII in A minor, a pulse that waits for the narration to start, and a
 pentatonic motif on a struck-metal voice. `mix.sh` ducks it under the voice with
 a real sidechain compressor rather than a static level, and normalises the result

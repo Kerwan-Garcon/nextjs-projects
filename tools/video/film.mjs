@@ -5,32 +5,41 @@ import { extname, join } from 'node:path';
 import { FRAME, launch } from './lib.mjs';
 
 /**
- * Record the film.
+ * Record a film.
  *
- * The page cuts itself to `audio/out/vo.json`, so this only has to press play
- * and wait. Recording the animation rather than assembling it in an editor
+ * The page cuts itself to `audio/out/<cut>/vo.json`, so this only has to press
+ * play and wait. Recording the animation rather than assembling it in an editor
  * means the timing in the file is the timing on screen, and an edit to the
  * narration re-cuts the picture without anybody touching a timeline.
+ *
+ *   node tools/video/film.mjs [cut]        # cut defaults to "film"
+ *
+ * A cut is a page (`<cut>.html`) and a narration (`audio/script.<cut>.json`).
+ * Everything else here is shared, which is the whole point of the parameter.
  */
 
 const DIR = new URL('.', import.meta.url).pathname;
 const OUT = join(DIR, 'out');
+const CUT = process.argv[2] ?? 'film';
 const { width: W, height: H } = FRAME;
 
-for (const required of ['shots/board.png', 'audio/out/vo.json']) {
+for (const required of [`${CUT}.html`, `audio/out/${CUT}/vo.json`]) {
   if (!existsSync(join(DIR, required))) {
     throw new Error(
-      `tools/video/${required} is missing - run shots.mjs and audio/tts.py first`,
+      `tools/video/${required} is missing - run shots.mjs and audio/tts.py ${CUT} first`,
     );
   }
 }
 
-mkdirSync(join(OUT, 'raw-film'), { recursive: true });
+const RAW = join(OUT, `raw-${CUT}`);
+mkdirSync(RAW, { recursive: true });
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.png': 'image/png',
   '.json': 'application/json',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
 };
 
 const server = createServer(async (req, res) => {
@@ -46,7 +55,7 @@ const browser = await launch();
 const context = await browser.newContext({
   viewport: { width: W, height: H },
   deviceScaleFactor: 1,
-  recordVideo: { dir: join(OUT, 'raw-film'), size: { width: W, height: H } },
+  recordVideo: { dir: RAW, size: { width: W, height: H } },
 });
 // Recording starts when the page opens, but the film cannot start until the
 // page has loaded and settled. That gap is dead footage at the head of the
@@ -56,7 +65,7 @@ const openedAt = Date.now();
 const page = await context.newPage();
 
 try {
-  await page.goto(`http://127.0.0.1:${server.address().port}/film.html`, {
+  await page.goto(`http://127.0.0.1:${server.address().port}/${CUT}.html`, {
     waitUntil: 'networkidle',
   });
   await page.waitForFunction(() => window.__filmReady === true, null, { timeout: 20_000 });
@@ -71,7 +80,10 @@ try {
   await page.waitForTimeout(700);
 
   const leadMs = Date.now() - openedAt;
-  writeFileSync(join(OUT, 'film.timing.json'), JSON.stringify({ leadMs, totalMs: total }, null, 2));
+  writeFileSync(
+    join(OUT, `${CUT}.timing.json`),
+    JSON.stringify({ leadMs, totalMs: total }, null, 2),
+  );
   console.log(`  ${leadMs}ms of lead-in to trim`);
 
   await page.evaluate(() => window.__playFilm());
@@ -82,7 +94,7 @@ try {
   await browser.close();
   server.close();
 
-  const file = readdirSync(join(OUT, 'raw-film')).find((f) => f.endsWith('.webm'));
-  if (file) renameSync(join(OUT, 'raw-film', file), join(OUT, 'film-raw.webm'));
-  console.log('recorded');
+  const file = readdirSync(RAW).find((f) => f.endsWith('.webm'));
+  if (file) renameSync(join(RAW, file), join(OUT, `${CUT}-raw.webm`));
+  console.log(`recorded -> out/${CUT}-raw.webm`);
 }

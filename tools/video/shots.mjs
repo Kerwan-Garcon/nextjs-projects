@@ -30,4 +30,10 @@ await shot(href, 'hypothesis');
 
 await shot('/research', 'research');
 
+// The courses. The lesson chosen is the one that teaches the epistemic layer,
+// so the shot shows the notation the film is about to claim it is written in.
+await shot('/learn', 'learn-index');
+await shot('/learn/what-counts-as-a-problem', 'learn-course');
+await shot('/learn/what-counts-as-a-problem/six-kinds-of-statement', 'learn-lesson');
+
 await browser.close();

@@ -11,6 +11,8 @@ The brief it is written to is the product's own: restrained, warm, no drama.
 A low drone, a pad moving through i - VI - III - VII in A minor, a pulse that
 arrives once the film has started talking, and a pentatonic motif on a
 struck-metal voice. Nothing swells, because nothing here is a breakthrough.
+
+    python3 tools/video/audio/music.py [cut]           # cut defaults to "film"
 """
 from __future__ import annotations
 
@@ -22,7 +24,7 @@ import numpy as np
 import soundfile as sf
 
 HERE = Path(__file__).parent
-OUT = HERE / "out"
+CUTS_DIR = HERE / "out"
 
 RATE = 48_000
 BPM = 76.0
@@ -166,18 +168,32 @@ def compose(duration: float, speaks_at: float, lifts_at: float) -> np.ndarray:
 
 
 def main() -> int:
-    timing = json.loads((OUT / "vo.json").read_text(encoding="utf-8"))
+    cut = sys.argv[1] if len(sys.argv) > 1 else "film"
+    out = CUTS_DIR / cut
+    vo = out / "vo.json"
+    if not vo.exists():
+        print(f"no narration for cut {cut!r}: run tts.py {cut} first")
+        return 1
+
+    timing = json.loads(vo.read_text(encoding="utf-8"))
     duration = timing["totalMs"] / 1000.0
 
     # The first line is the cold open; the pulse joins on the second.
     speaks_at = timing["lines"][1]["startMs"] / 1000.0
+    # Which beat the motif doubles on is a property of the film, so the script
+    # names it rather than this file knowing one film's scene ids.
+    spec = json.loads((HERE / f"script.{cut}.json").read_text(encoding="utf-8"))
     lifts_at = next(
-        (line["startMs"] / 1000.0 for line in timing["lines"] if line["id"] == "proof"),
+        (
+            line["startMs"] / 1000.0
+            for line in timing["lines"]
+            if line["id"] == spec.get("liftsAt")
+        ),
         duration * 0.75,
     )
 
-    sf.write(OUT / "music.wav", compose(duration, speaks_at, lifts_at), RATE)
-    print(f"  {duration + 2.5:.1f}s of score -> audio/out/music.wav")
+    sf.write(out / "music.wav", compose(duration, speaks_at, lifts_at), RATE)
+    print(f"  {duration + 2.5:.1f}s of score -> audio/out/{cut}/music.wav")
     print(f"  pulse from {speaks_at:.1f}s, lift from {lifts_at:.1f}s")
     return 0
 

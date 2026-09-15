@@ -2,6 +2,7 @@
   "voice": "af_heart",
   "speed": 1.0,
   "lang": "en-us",
+  "liftsAt": "proof",
   "lines": [
     { "id": "cold",    "text": "AI might destroy us.",                                                                  "gapAfter": 0.5 },
     { "id": "cold2",   "text": "Let's make it save us first.",                                                          "gapAfter": 0.85 },

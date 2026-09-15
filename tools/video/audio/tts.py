@@ -9,6 +9,8 @@ it after an edit re-times the film automatically.
 
 Kokoro is Apache-2.0. The weights are fetched once into `model/`, which is not
 tracked.
+
+    python3 tools/video/audio/tts.py [cut] [voice]     # cut defaults to "film"
 """
 from __future__ import annotations
 
@@ -23,7 +25,9 @@ import soundfile as sf
 
 HERE = Path(__file__).parent
 MODEL_DIR = HERE / "model"
-OUT_DIR = HERE / "out"
+# One cut per film. `script.<cut>.json` in, `out/<cut>/` out, so a second film
+# is a script and a page rather than a second copy of this pipeline.
+CUTS_DIR = HERE / "out"
 
 HF = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main"
 # The quantised builds segfault under onnxruntime 1.30; full precision is fine
@@ -83,8 +87,15 @@ def trim(samples: np.ndarray) -> np.ndarray:
 def main() -> int:
     from kokoro_onnx import Kokoro
 
-    spec = json.loads((HERE / "script.json").read_text(encoding="utf-8"))
-    voice = sys.argv[1] if len(sys.argv) > 1 else spec["voice"]
+    cut = sys.argv[1] if len(sys.argv) > 1 else "film"
+    script = HERE / f"script.{cut}.json"
+    if not script.exists():
+        print(f"no script for cut {cut!r}: {script} does not exist")
+        return 1
+
+    spec = json.loads(script.read_text(encoding="utf-8"))
+    voice = sys.argv[2] if len(sys.argv) > 2 else spec["voice"]
+    out_dir = CUTS_DIR / cut
 
     model, voices = ensure_model()
     kokoro = Kokoro(str(model), str(voices))
@@ -92,7 +103,7 @@ def main() -> int:
         print(f"unknown voice {voice}; have {kokoro.get_voices()}")
         return 1
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
     timeline, track, cursor = [], [], 0.0
 
     for line in spec["lines"]:
@@ -120,12 +131,12 @@ def main() -> int:
         track.append(np.zeros(int(gap * SAMPLE_RATE), dtype=np.float32))
         cursor += len(samples) / SAMPLE_RATE + gap
 
-    sf.write(OUT_DIR / "vo.wav", np.concatenate(track), SAMPLE_RATE)
-    (OUT_DIR / "vo.json").write_text(
+    sf.write(out_dir / "vo.wav", np.concatenate(track), SAMPLE_RATE)
+    (out_dir / "vo.json").write_text(
         json.dumps({"voice": voice, "totalMs": round(cursor * 1000), "lines": timeline}, indent=2),
         encoding="utf-8",
     )
-    print(f"\n  {cursor:.1f}s of narration in {voice} -> voice/out/vo.wav", flush=True)
+    print(f"\n  {cursor:.1f}s of narration in {voice} -> audio/out/{cut}/vo.wav", flush=True)
     return 0
 
 

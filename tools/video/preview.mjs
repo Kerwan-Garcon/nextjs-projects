@@ -5,17 +5,23 @@ import { extname, join } from 'node:path';
 import { FRAME, launch } from './lib.mjs';
 
 /**
- * One still per scene of the film, so it can be reviewed before it is recorded.
+ * One still per scene of a film, so it can be reviewed before it is recorded.
  * Entrances are frozen at their end state and counters are jumped to their
  * final value: this is for checking composition and copy, not motion.
+ *
+ *   node tools/video/preview.mjs [cut]     # cut defaults to "film"
  */
 const DIR = new URL('.', import.meta.url).pathname;
-mkdirSync(join(DIR, 'preview'), { recursive: true });
+const CUT = process.argv[2] ?? 'film';
+const PREVIEW = join(DIR, 'preview', CUT);
+mkdirSync(PREVIEW, { recursive: true });
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.png': 'image/png',
   '.json': 'application/json',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
 };
 const server = createServer(async (req, res) => {
   const path = join(DIR, decodeURIComponent((req.url ?? '/').split('?')[0]));
@@ -28,7 +34,9 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 
 const browser = await launch();
 const page = await browser.newPage({ viewport: { ...FRAME } });
-await page.goto(`http://127.0.0.1:${server.address().port}/film.html`, { waitUntil: 'networkidle' });
+await page.goto(`http://127.0.0.1:${server.address().port}/${CUT}.html`, {
+  waitUntil: 'networkidle',
+});
 await page.waitForFunction(() => window.__filmReady === true, null, { timeout: 20_000 });
 
 const ids = await page.evaluate(() =>
@@ -47,10 +55,10 @@ for (const [index, id] of ids.entries()) {
   }, id);
   await page.waitForTimeout(420);
   await page.screenshot({
-    path: join(DIR, 'preview', `${String(index + 1).padStart(2, '0')}-${id}.png`),
+    path: join(PREVIEW, `${String(index + 1).padStart(2, '0')}-${id}.png`),
   });
 }
 
 await browser.close();
 server.close();
-console.log(`previewed ${ids.length} scenes -> tools/video/preview/`);
+console.log(`previewed ${ids.length} scenes -> tools/video/preview/${CUT}/`);

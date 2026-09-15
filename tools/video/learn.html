@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>SAVE US — Learn</title>
+<link rel="stylesheet" href="stage.css" />
+<style>
+/*
+ * The courses film.
+ *
+ * The stage is shared with the main film; only what this one needs is here.
+ * The rule it is written to is the product's own: a statement on screen is
+ * rendered the way the product renders it, in the same colours, so the film
+ * cannot flatter the thing it is about. The UNKNOWN scene is the test of that —
+ * it would be easy to leave the admitted gaps out of a promotional film, and
+ * leaving them out is the beginning of what this product exists to avoid.
+ */
+
+/* A statement, exactly as the lesson pages draw one. */
+.stmt{border-left:2px solid var(--claim);padding:18px 0 18px 26px;max-width:1180px}
+.stmt .tag{font-family:var(--mono);font-size:13px;letter-spacing:.14em;text-transform:uppercase;
+  border:1px solid currentColor;padding:4px 10px;display:inline-block}
+.stmt p{margin-top:18px;font-size:30px;line-height:1.42;color:var(--ink)}
+.stmt.unknown{border-left-style:dashed;border-left-color:var(--unknown);color:var(--unknown)}
+.stmt.unknown p{color:var(--dim);font-style:italic}
+.stmt.claim{color:var(--claim)}
+.stmt.inference{border-left-color:var(--inference);color:var(--inference)}
+
+/* Source chips, as the product draws them under a claim. */
+.chips{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}
+.chip{display:inline-flex;align-items:center;gap:11px;border:1px solid var(--line-strong);
+  background:var(--raised);padding:9px 15px}
+.chip .r{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ok)}
+.chip .t{font-size:16px;color:var(--muted)}
+
+/* Two tracks, two cards. */
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+  border:1px solid var(--line);max-width:1340px}
+.card{background:var(--panel);padding:34px 36px}
+.card .h{font-family:var(--mono);font-size:13px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--signal)}
+.card .t{margin-top:20px;font-size:34px;line-height:1.16;letter-spacing:-.016em}
+.card ul{margin-top:24px;list-style:none}
+.card li{font-size:18.5px;line-height:1.6;color:var(--muted);padding-left:22px;position:relative}
+.card li::before{content:'';position:absolute;left:0;top:13px;width:8px;height:1px;
+  background:var(--line-strong)}
+
+/* What is deliberately not here. */
+.absent{display:flex;flex-direction:column;gap:20px;margin-top:8px}
+.absent div{font-family:var(--mono);font-size:44px;letter-spacing:-.01em;color:var(--dim);
+  text-decoration:line-through;text-decoration-color:var(--alert);text-decoration-thickness:3px}
+
+/* Real problems, drawn as the board draws them. */
+.probs{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);max-width:1340px}
+.prob{background:var(--panel);padding:22px 26px;display:grid;
+  grid-template-columns:96px 1fr auto;align-items:center;gap:26px}
+.prob .ref{font-family:var(--mono);font-size:14px;color:var(--dim)}
+.prob .t{font-size:21px;line-height:1.34}
+.prob .m{display:flex;gap:26px;font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--dim);white-space:nowrap}
+.bars{display:inline-flex;gap:2px;margin-left:10px;vertical-align:-1px}
+.bars i{width:5px;height:10px;background:var(--line-strong)}
+.bars i.on{background:var(--warn)}
+.bars.d i.on{background:var(--muted)}
+</style>
+</head>
+<body class="ground">
+<div class="rail top"></div><div class="rail bottom"></div>
+<div class="chrome tl" id="wm">SAVE US</div>
+<div class="chrome tr" id="tr"></div>
+<div class="chrome bl" id="bl"></div>
+<div class="chrome br" id="br">LEARN</div>
+
+<section class="scene mid" data-line="cold">
+  <h2 class="rise d1" style="max-width:1200px" data-words>The board is written for people who already know how to read it.</h2>
+</section>
+
+<section class="scene mid" data-line="cost">
+  <h2 class="rise d1" style="color:var(--signal)">That is a barrier<br />this place cannot afford.</h2>
+  <p class="lede rise d3" style="margin-top:34px;font-size:22px">
+    Most of the intelligence available to any of these problems<br />is outside the room.
+  </p>
+</section>
+
+<section class="scene" data-line="open">
+  <div style="display:grid;grid-template-columns:440px 1fr;gap:72px;align-items:center">
+    <div>
+      <div class="kicker rise d1">The on-ramp</div>
+      <h3 class="rise d2">Free.<br />No account.</h3>
+      <p class="lede rise d3" style="margin-top:26px;font-size:21px">
+        Six courses. Eighteen lessons. About seventy-five minutes end to end.
+      </p>
+    </div>
+    <div style="position:relative;height:720px">
+      <div class="screen rise d2" style="position:absolute;inset:0;--pan:-22%;--drift:11s">
+        <img src="shots/learn-index.png" alt="" />
+      </div>
+      <div class="pin rise d5" style="top:120px;right:-24px">Readable signed out</div>
+      <div class="pin rise d7" style="top:452px;right:-40px">Progress is yours, not a score</div>
+    </div>
+  </div>
+</section>
+
+<section class="scene" data-line="tracks">
+  <div class="kicker rise d1">Two tracks</div>
+  <h3 class="rise d1" style="margin-bottom:36px">How to work here. And what you are working on.</h3>
+  <div class="cards">
+    <div class="card rise d2">
+      <div class="h">Method</div>
+      <div class="t">What separates a topic<br />from a problem.</div>
+      <ul>
+        <li class="rise d4">A topic is not a problem</li>
+        <li class="rise d4">Six kinds of statement</li>
+        <li class="rise d5">A hypothesis you can attack</li>
+        <li class="rise d5">Where a number comes from</li>
+        <li class="rise d6">Saying UNKNOWN</li>
+      </ul>
+    </div>
+    <div class="card rise d3">
+      <div class="h">Systems</div>
+      <div class="t">Enough to follow<br />the argument.</div>
+      <ul>
+        <li class="rise d5">Climate and energy</li>
+        <li class="rise d5">Cities, heat and water</li>
+        <li class="rise d6">Health under pressure</li>
+        <li class="rise d6">Food, land, and what lives on it</li>
+        <li class="rise d7">Every lesson cited</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="scene" data-line="notation">
+  <div style="display:grid;grid-template-columns:440px 1fr;gap:72px;align-items:center">
+    <div>
+      <div class="kicker rise d1">Written in the notation</div>
+      <h3 class="rise d2">A lesson teaches it<br />by being it.</h3>
+      <p class="lede rise d3" style="margin-top:26px;font-size:21px">
+        Not prose with footnotes. The same typed statements the problem pages
+        are built from.
+      </p>
+    </div>
+    <div style="position:relative;height:720px">
+      <div class="screen rise d2" style="position:absolute;inset:0;--pan:-30%;--drift:12s">
+        <img src="shots/learn-lesson.png" alt="" />
+      </div>
+      <div class="pin rise d5" style="top:150px;right:-28px">Source claim · attributed</div>
+      <div class="pin rise d6" style="top:368px;right:-44px">Inference · derivation shown</div>
+      <div class="pin rise d7" style="top:586px;right:-20px">Unknown · stated, not hidden</div>
+    </div>
+  </div>
+</section>
+
+<section class="scene" data-line="unknown">
+  <div class="kicker rise d1">Thirteen times, across eighteen lessons</div>
+  <div class="stmt unknown rise d2">
+    <span class="tag">Unknown</span>
+    <p>
+      Whether the platform's own labelling makes readers better at judging
+      evidence, or merely makes them feel better, has not been tested.
+    </p>
+  </div>
+  <p class="lede rise d5" style="margin-top:44px;font-size:21px">
+    A course that hides its open questions teaches the opposite of what this place is for.
+  </p>
+</section>
+
+<section class="scene" data-line="sources">
+  <div class="kicker rise d1">Every claim, attributed</div>
+  <div class="stmt claim rise d2">
+    <span class="tag">Source claim</span>
+    <p>
+      The Global Carbon Project publishes an annual budget of anthropogenic
+      carbon emissions and sinks, assembled from multiple independent estimates.
+    </p>
+    <div class="chips">
+      <span class="chip rise d5"><span class="r">High</span><span class="t">Global Carbon Budget · Global Carbon Project</span></span>
+    </div>
+  </div>
+  <div class="sources" style="margin-top:44px">
+    <span class="rise d6">World Health Organization</span><span class="rise d6">IPCC</span>
+    <span class="rise d6">The Lancet</span><span class="rise d7">IEA</span>
+    <span class="rise d7">FAO</span><span class="rise d7">IPBES</span>
+    <span class="rise d8">NASA GISS</span><span class="rise d8">IUCN</span>
+  </div>
+</section>
+
+<section class="scene" data-line="noxp">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:center">
+    <div>
+      <div class="kicker rise d1">What is not here</div>
+      <div class="absent">
+        <div class="rise d2">Points</div>
+        <div class="rise d3">Streaks</div>
+        <div class="rise d4">Badges</div>
+        <div class="rise d5">Reputation</div>
+      </div>
+    </div>
+    <div>
+      <h3 class="rise d3" style="font-size:36px">Finishing a lesson<br />earns nothing.</h3>
+      <p class="lede rise d5" style="margin-top:26px;font-size:21px">
+        A platform that paid standing for finishing a quiz<br />would get quiz-finishers.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section class="scene mid" data-line="why">
+  <h2 class="rise d1" data-words>Standing comes from research other people can check.</h2>
+  <p class="lede rise d4" style="margin-top:36px;font-size:22px;color:var(--dim)">
+    Reading is not contributing, and the product will not pretend otherwise.
+  </p>
+</section>
+
+<section class="scene" data-line="end">
+  <div class="kicker rise d1">Where to put it</div>
+  <h3 class="rise d1" style="margin-bottom:34px">Every lesson ends on a real open problem.</h3>
+  <div class="probs">
+    <div class="prob rise d2">
+      <span class="ref">#004821</span>
+      <span class="t">Reducing extreme heat mortality in Paris without replacing the existing housing stock</span>
+      <span class="m">
+        <span>Difficulty<span class="bars d"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span></span>
+        <span>Urgency<span class="bars"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></span>
+      </span>
+    </div>
+    <div class="prob rise d3">
+      <span class="ref">#004831</span>
+      <span class="t">Verifying machine-generated claims against primary sources at literature-review scale</span>
+      <span class="m">
+        <span>Difficulty<span class="bars d"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></span></span>
+        <span>Urgency<span class="bars"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span></span>
+      </span>
+    </div>
+    <div class="prob rise d4">
+      <span class="ref">#004834</span>
+      <span class="t">Meeting rapidly growing cooling demand in hot climates without breaking the evening peak</span>
+      <span class="m">
+        <span>Difficulty<span class="bars d"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span></span>
+        <span>Urgency<span class="bars"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span></span>
+      </span>
+    </div>
+  </div>
+  <p class="lede rise d6" style="margin-top:32px;font-size:20px">
+    Unsolved, stated properly, and the discussion on them is open.
+  </p>
+</section>
+
+<section class="scene mid" data-line="sign">
+  <div class="wordmark rise d1">SAVE US</div>
+  <div class="hair rise d2"></div>
+  <h3 class="rise d2" style="font-weight:440">
+    Learn the method.<br /><span style="color:var(--signal)">Then come and use it.</span>
+  </h3>
+  <p class="mono rise d4" style="margin-top:52px;font-size:20px;letter-spacing:.14em;color:var(--muted)">
+    /learn — free, and it needs no account
+  </p>
+</section>
+
+<script>
+/* Chrome labels, per narrated line. */
+window.__CHROME = {
+  cold:     [null, null],
+  cost:     [null, null],
+  open:     ['THE COURSES', '6 COURSES · 18 LESSONS'],
+  tracks:   ['THE COURSES', 'METHOD · SYSTEMS'],
+  notation: ['EPISTEMIC LAYER', 'THE SAME NOTATION AS THE BOARD'],
+  unknown:  ['EPISTEMIC LAYER', 'THE GAPS ARE STATED'],
+  sources:  ['CITATIONS', 'RESOLVED, OR REFUSED BY A TEST'],
+  noxp:     ['SCORING', 'THERE ISN’T ANY'],
+  why:      [null, null],
+  end:      ['THE BOARD', '21 OPEN PROBLEMS'],
+  sign:     [null, null],
+};
+</script>
+<script src="stage.js"></script>
+</body>
+</html>

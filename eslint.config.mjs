@@ -51,4 +51,14 @@ export default tseslint.config(
       globals: { ...globals.node, ...globals.browser },
     },
   },
+  {
+    // The films' shared projector. It is loaded by a <script src> in the page,
+    // so it is a classic browser script and never runs under Node.
+    files: ['tools/video/*.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'script',
+      globals: globals.browser,
+    },
+  },
 );

@@ -2,7 +2,9 @@
 #
 # Mix the narration over the score and mux it onto the picture.
 #
-#   tools/video/mix.sh out/film-raw.webm out/save-us-film.mp4
+#   tools/video/mix.sh out/film-silent.mp4 out/save-us-film.mp4 [cut]
+#
+# The cut names which narration and score to mix, and defaults to "film".
 #
 # The score is ducked by the voice with a real sidechain compressor rather than
 # a static level, so it breathes in the gaps between lines instead of sitting
@@ -15,12 +17,12 @@ FF="${FFMPEG:-$(command -v ffmpeg || true)}"
 [ -z "$FF" ] && { echo "no ffmpeg found; set FFMPEG=/path/to/ffmpeg" >&2; exit 1; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-VIDEO="$1"; OUT="$2"
-VO="$HERE/audio/out/vo.wav"
-MUSIC="$HERE/audio/out/music.wav"
+VIDEO="$1"; OUT="$2"; CUT="${3:-film}"
+VO="$HERE/audio/out/$CUT/vo.wav"
+MUSIC="$HERE/audio/out/$CUT/music.wav"
 
 for f in "$VO" "$MUSIC"; do
-  [ -f "$f" ] || { echo "missing $f - run tools/video/audio/tts.py and music.py first" >&2; exit 1; }
+  [ -f "$f" ] || { echo "missing $f - run tools/video/audio/tts.py $CUT and music.py $CUT first" >&2; exit 1; }
 done
 
 "$FF" -y -loglevel error \
@@ -36,7 +38,7 @@ done
     [mixed]afade=t=in:st=0:d=0.5,
            afade=t=out:st=$(python3 -c "
 import json,sys
-d=json.load(open('$HERE/audio/out/vo.json'))
+d=json.load(open('$HERE/audio/out/$CUT/vo.json'))
 print(round(d['totalMs']/1000 + 0.9, 2))
 "):d=1.4,
            loudnorm=I=-16:TP=-1.5:LRA=11[out]

@@ -520,7 +520,7 @@ and constraints on at least two dimensions.
 
 ## Video
 
-Two films, both produced by driving the real application rather than by editing
+Three, all produced by driving the real application rather than by editing
 footage. `tools/video/` holds the recorders and `tools/video/README.md` explains
 how to run them.
 
@@ -531,10 +531,13 @@ how to run them.
   re-recording on a slower machine re-times them with it, and a click that
   misses or an agent run that does not complete fails the recording rather than
   producing a confident video of a page where nothing happened.
-- **Reel** (`pnpm video:reel`) is `tools/video/reel.html` — a page composed from
-  the product's own design tokens and its own screenshots, animated in the
-  browser and recorded. There is no stock footage and no generated imagery in
-  it, and every number it shows is one this repository can produce.
+- **Films** (`pnpm video:film`, and `pnpm video:film learn` for the courses) are
+  pages composed from the product's own design tokens and its own screenshots,
+  animated in the browser and recorded. There is no stock footage and no
+  generated imagery in them, and every number they show is one this repository
+  can produce. The narration is synthesised locally and the score is written as
+  a function of its length, so editing a sentence re-cuts the picture without
+  anybody opening a timeline.
 
 ---
 
