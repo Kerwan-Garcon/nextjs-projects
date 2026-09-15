@@ -1,0 +1,20 @@
+{
+  "voice": "af_heart",
+  "speed": 1.0,
+  "lang": "en-us",
+  "liftsAt": "endproblem",
+  "lines": [
+    { "id": "board",      "text": "Every problem on this board is real, unsolved, and stated properly.",                                  "gapAfter": 0.35 },
+    { "id": "problem",    "text": "Open one. Why it matters, with the numbers. What it must not break. And how you would know it worked.", "gapAfter": 0.4 },
+    { "id": "hypothesis", "text": "A hypothesis here is not a comment. Claim, mechanism, assumptions, admitted unknowns, and a way to test it.", "gapAfter": 0.4 },
+    { "id": "evidence",   "text": "Supporting and contradicting evidence sit side by side. Neither one is hidden.",                       "gapAfter": 0.45 },
+    { "id": "learn",      "text": "New to all of this? The courses are free, and they need no account.",                                  "gapAfter": 0.35 },
+    { "id": "index",      "text": "Six courses. Eighteen lessons.",                                                                       "gapAfter": 0.75 },
+    { "id": "lesson",     "text": "Open one.",                                                                                            "gapAfter": 0.95 },
+    { "id": "notation",   "text": "A lesson is written in the same notation as the board. Every claim carries its kind, and the publication it came from.", "gapAfter": 0.45 },
+    { "id": "check",      "text": "Then it checks you. A wrong answer costs nothing — the explanation is the point.",                      "gapAfter": 0.4 },
+    { "id": "noxp",       "text": "No points. No streaks. Nothing here earns reputation.",                                                "gapAfter": 0.4 },
+    { "id": "endproblem", "text": "And it ends where it should: on a real open problem you can now go and read.",                          "gapAfter": 0.5 },
+    { "id": "sign",       "text": "Save us.",                                                                                             "gapAfter": 1.7 }
+  ]
+}

@@ -1,8 +1,8 @@
 # Recording the videos
 
-Three, all produced by driving the real application rather than by editing
-footage: a **product walkthrough**, and two **narrated films** — one on the
-platform, one on the courses.
+Four, all produced by driving the real application rather than by editing
+footage: a **product walkthrough**, a **narrated tour**, and two **narrated
+films** — one on the platform, one on the courses.
 
 Nothing in any of them is staged. The walkthrough signs in, reads a problem,
 posts a counterargument and runs the four-agent pipeline against the seeded
@@ -43,6 +43,38 @@ video of a page where nothing happened. That is not hypothetical: the first two
 takes did exactly that, because driving the mouse by coordinate does not wait
 for hydration and does not notice the sticky header sitting over the button.
 
+## Tour — 0:55, narrated, scored, and it is the real app
+
+The one that answers "what does it actually do". Not a composed page: the
+application, driven by a real cursor, with the narration cut over it. It opens
+a problem, opens a hypothesis, reads the evidence both ways, then goes into the
+courses — opens a course, opens a lesson, and answers a question wrong on
+purpose so the explanation is on screen while the voice says a wrong answer
+costs nothing.
+
+```bash
+pnpm video:voice tour
+pnpm video:tour
+FFMPEG=... tools/video/postprod.sh \
+  tools/video/out/tour-raw.webm tools/video/out/tour-silent.mp4 "" "$LEAD"
+FFMPEG=... tools/video/mix.sh \
+  tools/video/out/tour-silent.mp4 tools/video/out/save-us-tour.mp4 tour
+```
+
+The schedule is the boss here too. Each beat of `audio/script.tour.json` owns a
+slice of wall-clock time; its action is handed a `left()` telling it how much of
+that slice is left, and every scroll sizes itself from that rather than from a
+constant — so a page turn that takes longer than usual is absorbed by the next
+scroll instead of pushing the whole tour behind the voice. The take prints its
+spare time per beat and fails outright if the picture ever falls more than 1.4 s
+behind.
+
+Beats are anchored to what they are talking about, not to a scroll distance. The
+first take glided a fixed 980 px through a lesson and sailed straight past the
+three typed statements while the narration was describing them; it now scrolls
+to the first statement and drifts across the others. A distance that happens to
+frame the right thing today is a caption that lies after the next copy edit.
+
 ## Films — narrated, scored
 
 Two of them, out of one pipeline. A **cut** is a page (`<cut>.html`) and a
@@ -54,6 +86,10 @@ which is what keeps two films looking like one product rather than two.
 | ------- | ------ | ----------------------------------------------------------------- |
 | `film`  | 0:53   | The platform: the board, the epistemic layer, the agents, intake. |
 | `learn` | 0:52   | The courses: what they are, and what they deliberately do not do. |
+
+(`tour` is a cut too — it shares the voice and the score, but its picture is the
+live application rather than a page, so it has `tour.mjs` instead of an HTML
+file and is documented above.)
 
 ```bash
 pnpm video:shots                       # stills, from the running app

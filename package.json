@@ -33,6 +33,7 @@
     "video:preview": "node tools/video/preview.mjs",
     "video:voice": "tools/video/voice.sh",
     "video:film": "node tools/video/film.mjs",
+    "video:tour": "node tools/video/tour.mjs",
     "db:deploy": "pnpm --filter @saveus/db migrate"
   },
   "devDependencies": {

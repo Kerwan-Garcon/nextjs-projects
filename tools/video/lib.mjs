@@ -170,6 +170,30 @@ export async function glide(page, px, ms = 2200) {
   );
 }
 
+/**
+ * Glide until a given element sits just below the sticky header. Used by the
+ * narrated tour, where a beat has to land on a named section of a real page
+ * rather than on a scroll distance that happens to work today.
+ */
+export async function glideTo(page, target, ms = 2200, offset = HEADER_SAFE_PX) {
+  const dy =
+    typeof target === 'string'
+      ? await page.evaluate(
+          ([sel, pad]) => {
+            const node = document.querySelector(sel);
+            return node ? node.getBoundingClientRect().top - pad : null;
+          },
+          [target, offset],
+        )
+      : await target
+          .first()
+          .evaluate((node, pad) => node.getBoundingClientRect().top - pad, offset);
+
+  if (dy === null) throw new Error(`glideTo: nothing matches ${target}`);
+  if (Math.abs(dy) > 4) await glide(page, dy, ms);
+  return dy;
+}
+
 export async function toTop(page, ms = 600) {
   const y = await page.evaluate(() => window.scrollY);
   if (y > 0) await glide(page, -y, ms);

@@ -531,6 +531,11 @@ how to run them.
   re-recording on a slower machine re-times them with it, and a click that
   misses or an agent run that does not complete fails the recording rather than
   producing a confident video of a page where nothing happened.
+- **Tour** (`pnpm video:tour`) is the narrated one: the real application driven
+  by a real cursor, opening a problem, a hypothesis and its evidence, then going
+  into the courses to open a lesson and answer a question. The narration is cut
+  first and every scroll sizes itself from the time left in its beat, so the
+  picture cannot drift behind the voice — and the take fails if it does.
 - **Films** (`pnpm video:film`, and `pnpm video:film learn` for the courses) are
   pages composed from the product's own design tokens and its own screenshots,
   animated in the browser and recorded. There is no stock footage and no
