@@ -346,3 +346,90 @@ export interface RejectedDocument {
   reasons: string[];
   fetchedAt: string;
 }
+
+/* ------------------------------------------------------------------ */
+/* Courses                                                             */
+/* ------------------------------------------------------------------ */
+
+export type LessonBlockView =
+  | { kind: 'PROSE'; text: string }
+  | {
+      kind: 'STATEMENT';
+      text: string;
+      epistemicKind: Statement['kind'];
+      kindLabel: string;
+      sources: Source[];
+    }
+  | { kind: 'CALLOUT'; title: string; text: string }
+  | {
+      kind: 'COMPARE';
+      caption: string;
+      wrong: { label: string; text: string };
+      right: { label: string; text: string };
+    }
+  | { kind: 'CHECKLIST'; title: string; items: string[] };
+
+export interface CourseSummary {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string;
+  outcome: string;
+  track: string;
+  domainKey: string | null;
+  estimatedMinutes: number;
+  lessonCount: number;
+  completedCount: number;
+}
+
+export interface LessonSummary {
+  id: string;
+  slug: string;
+  title: string;
+  hook: string;
+  minutes: number;
+  completedAt: string | null;
+}
+
+export interface CourseDetail extends CourseSummary {
+  lessons: LessonSummary[];
+}
+
+export interface LessonQuestion {
+  id: string;
+  prompt: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+}
+
+export interface LessonDetail {
+  id: string;
+  slug: string;
+  title: string;
+  hook: string;
+  minutes: number;
+  blocks: LessonBlockView[];
+  questions: LessonQuestion[];
+  problems: {
+    ref: string;
+    slug: string;
+    title: string;
+    summary: string;
+    difficulty: number;
+    urgency: number;
+  }[];
+  completedAt: string | null;
+  answers: number[];
+  course: { slug: string; title: string; track: string };
+  previous: { slug: string; title: string } | null;
+  next: { slug: string; title: string } | null;
+}
+
+export interface LearningProgress {
+  lessonsCompleted: number;
+  lessonsTotal: number;
+  coursesCompleted: number;
+  coursesTotal: number;
+  nextLesson: { courseSlug: string; courseTitle: string; slug: string; title: string } | null;
+}

@@ -8,6 +8,7 @@ import type { SessionUser } from '@/lib/types';
 const LINKS = [
   { href: '/problems', label: 'Problems' },
   { href: '/research', label: 'Research' },
+  { href: '/learn', label: 'Learn' },
   { href: '/leaderboard', label: 'Leaderboard' },
   { href: '/my-work', label: 'My work' },
 ];

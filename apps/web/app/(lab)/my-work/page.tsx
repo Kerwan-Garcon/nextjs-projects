@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Empty, Panel, PanelHeader, Stat, StatusTag } from '@saveus/ui';
 import { LogoutButton } from '@/components/logout-button';
 import { apiGet, apiGetOrNull } from '@/lib/server-api';
-import type { SessionUser } from '@/lib/types';
+import type { LearningProgress, SessionUser } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,7 +73,10 @@ export default async function MyWorkPage() {
     );
   }
 
-  const data = await apiGetOrNull<MyWork>('/api/my-work');
+  const [data, learning] = await Promise.all([
+    apiGetOrNull<MyWork>('/api/my-work'),
+    apiGetOrNull<{ progress: LearningProgress }>('/api/my-learning'),
+  ]);
   if (!data) return <Empty title="Could not load your work" />;
 
   return (
@@ -175,6 +178,8 @@ export default async function MyWorkPage() {
         </Panel>
       </div>
 
+      {learning ? <LearningPanel progress={learning.progress} /> : null}
+
       <Panel className="mt-4">
         <PanelHeader title="Research sessions I requested" meta={`${data.sessions.length}`} />
         {data.sessions.length === 0 ? (
@@ -196,5 +201,71 @@ export default async function MyWorkPage() {
         )}
       </Panel>
     </div>
+  );
+}
+
+/**
+ * Learning progress, in the profile area where it was asked for.
+ *
+ * It sits next to the research work but is counted separately and never folded
+ * into reputation: what you have read is not what you have contributed, and the
+ * product would be lying if it added them together.
+ */
+function LearningPanel({ progress }: { progress: LearningProgress }) {
+  const complete = progress.lessonsTotal > 0 && progress.lessonsCompleted === progress.lessonsTotal;
+
+  return (
+    <Panel className="mt-4">
+      <PanelHeader
+        title="Courses"
+        meta={`${progress.lessonsCompleted}/${progress.lessonsTotal} lessons · ${progress.coursesCompleted}/${progress.coursesTotal} courses`}
+        action={
+          <Link
+            href="/learn"
+            className="mono border border-line-strong px-3 py-1.5 text-[10px] uppercase tracking-[0.1em] text-ink-muted hover:border-signal/50 hover:text-signal"
+          >
+            All courses
+          </Link>
+        }
+      />
+      <div className="px-4 py-3.5">
+        <div className="flex items-center gap-2">
+          <div
+            className="flex flex-wrap gap-[2px]"
+            role="img"
+            aria-label={`${progress.lessonsCompleted} of ${progress.lessonsTotal} lessons read`}
+          >
+            {Array.from({ length: progress.lessonsTotal }, (_, index) => (
+              <span
+                key={index}
+                className={`h-[8px] w-[14px] ${index < progress.lessonsCompleted ? 'bg-ok' : 'bg-line-strong'}`}
+              />
+            ))}
+          </div>
+        </div>
+
+        {complete ? (
+          <p className="mt-3 text-[12.5px] leading-relaxed text-ink-muted">
+            You have read all of them. The place to put it is the board: pick an open problem and
+            attack the weakest assumption you can find in it.
+          </p>
+        ) : progress.nextLesson ? (
+          <p className="mt-3 text-[12.5px] leading-relaxed text-ink-muted">
+            Next up:{' '}
+            <Link
+              href={`/learn/${progress.nextLesson.courseSlug}/${progress.nextLesson.slug}`}
+              className="text-signal hover:underline"
+            >
+              {progress.nextLesson.title}
+            </Link>{' '}
+            <span className="text-ink-dim">in {progress.nextLesson.courseTitle}</span>
+          </p>
+        ) : null}
+
+        <p className="mono mt-3 text-[10px] text-ink-dim">
+          Reading is not counted as reputation. It is counted here, for you.
+        </p>
+      </div>
+    </Panel>
   );
 }

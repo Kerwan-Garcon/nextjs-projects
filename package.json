@@ -10,7 +10,7 @@
     "dev": "pnpm --filter @saveus/web dev",
     "dev:api": "pnpm --filter @saveus/api dev",
     "dev:worker": "pnpm --filter @saveus/worker dev",
-    "build": "pnpm -r --filter=!@saveus/web build && pnpm --filter @saveus/web build",
+    "build": "pnpm --filter @saveus/web build",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

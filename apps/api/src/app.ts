@@ -7,6 +7,7 @@ import { SESSION_COOKIE, resolveSession, type SessionUser } from './auth.js';
 import { createContext, type AppContext } from './context.js';
 import { authRoutes } from './routes/auth.js';
 import { contributionRoutes } from './routes/contributions.js';
+import { courseRoutes } from './routes/courses.js';
 import { hypothesisRoutes } from './routes/hypotheses.js';
 import { ingestionRoutes } from './routes/ingestion.js';
 import { cronRoutes } from './routes/cron.js';
@@ -97,6 +98,7 @@ export function createApp(context: AppContext = createContext()) {
   app.route('/', contributionRoutes());
   app.route('/', researchRoutes());
   app.route('/', peopleRoutes());
+  app.route('/', courseRoutes());
   app.route('/', ingestionRoutes());
   app.route('/', cronRoutes());
 
@@ -121,7 +123,8 @@ function retryAfterFrom(error: AppError): number | null {
   const details = error.details;
   if (details && typeof details === 'object' && 'retryAfterSeconds' in details) {
     const seconds = (details as { retryAfterSeconds: unknown }).retryAfterSeconds;
-    if (typeof seconds === 'number' && Number.isFinite(seconds)) return Math.max(1, Math.ceil(seconds));
+    if (typeof seconds === 'number' && Number.isFinite(seconds))
+      return Math.max(1, Math.ceil(seconds));
   }
   return 60;
 }
@@ -180,10 +183,8 @@ export async function enforceWriteLimit(context: AppContext, identity: string): 
     context.limits.write.windowMs,
   );
   if (!decision.allowed) {
-    throw new AppError(
-      'RATE_LIMITED',
-      'Slow down: too many writes in the last minute.',
-      { retryAfterSeconds: Math.max(1, Math.ceil((decision.resetAt - Date.now()) / 1000)) },
-    );
+    throw new AppError('RATE_LIMITED', 'Slow down: too many writes in the last minute.', {
+      retryAfterSeconds: Math.max(1, Math.ceil((decision.resetAt - Date.now()) / 1000)),
+    });
   }
 }

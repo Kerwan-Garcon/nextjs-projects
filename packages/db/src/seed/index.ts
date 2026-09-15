@@ -23,6 +23,7 @@ import { SEED_SOURCES } from './sources.js';
 import { SEED_PROBLEMS } from './problems.js';
 import { SEED_HYPOTHESES } from './hypotheses.js';
 import { SEED_USERS } from './users.js';
+import { SEED_COURSES } from './courses.js';
 import { renderContribution, type ContributionContext } from './contributions.js';
 
 /**
@@ -51,6 +52,8 @@ export interface SeedSummary {
   reputationEvents: number;
   validations: number;
   candidates: number;
+  courses: number;
+  lessons: number;
 }
 
 /** Deterministic PRNG so a reseed produces the same database. */
@@ -101,6 +104,8 @@ export async function seed(db: Db): Promise<SeedSummary> {
     reputationEvents: 0,
     validations: 0,
     candidates: 0,
+    courses: 0,
+    lessons: 0,
   };
 
   // ---------------------------------------------------------------- domains
@@ -733,6 +738,83 @@ export async function seed(db: Db): Promise<SeedSummary> {
         .execute();
     }
   }
+
+  // ---------------------------------------------------------------- courses
+  // The on-ramp. Loaded from the same library the problems cite, so a lesson
+  // that says "this is a SOURCE CLAIM" can show which source.
+  for (const [courseIndex, course] of SEED_COURSES.entries()) {
+    const courseId = randomUUID();
+    await db
+      .insertInto('courses')
+      .values({
+        id: courseId,
+        slug: course.slug,
+        title: course.title,
+        summary: course.summary,
+        outcome: course.outcome,
+        track: course.track,
+        domain_key: course.domainKey,
+        estimated_minutes: course.estimatedMinutes,
+        sort_order: courseIndex,
+        created_at: daysAgo(60),
+      })
+      .execute();
+    summary.courses += 1;
+
+    for (const [lessonIndex, lesson] of course.lessons.entries()) {
+      const lessonId = randomUUID();
+      // Source keys are resolved to ids here rather than at read time: a lesson
+      // may not cite a source the library does not hold.
+      const blocks = lesson.blocks.map((block) => {
+        if (block.kind !== 'STATEMENT') return block;
+        const resolved = block.sourceKeys.map((key) => {
+          const id = sourceIds.get(key);
+          if (!id) {
+            throw new Error(`Lesson ${course.slug}/${lesson.slug} cites unknown source "${key}"`);
+          }
+          return id;
+        });
+        return { ...block, sourceKeys: resolved };
+      });
+
+      await db
+        .insertInto('lessons')
+        .values({
+          id: lessonId,
+          course_id: courseId,
+          slug: lesson.slug,
+          title: lesson.title,
+          hook: lesson.hook,
+          blocks: json(blocks),
+          problem_refs: lesson.problemRefs,
+          minutes: lesson.minutes,
+          sort_order: lessonIndex,
+        })
+        .execute();
+      summary.lessons += 1;
+
+      if (lesson.questions.length > 0) {
+        await db
+          .insertInto('lesson_questions')
+          .values(
+            lesson.questions.map((question, questionIndex) => ({
+              id: randomUUID(),
+              lesson_id: lessonId,
+              prompt: question.prompt,
+              options: json(question.options),
+              correct_index: question.correctIndex,
+              explanation: question.explanation,
+              sort_order: questionIndex,
+            })),
+          )
+          .execute();
+      }
+    }
+  }
+
+  // Deliberately absent: no reputation_events row for course progress, and no
+  // lesson_progress seeded for the demo users. Finishing a course is not a
+  // research contribution and does not earn standing here.
 
   return summary;
 }

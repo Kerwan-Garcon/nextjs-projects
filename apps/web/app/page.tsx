@@ -53,6 +53,14 @@ export default async function Landing() {
           </Link>
         </div>
 
+        <p className="mt-5 text-[13px] leading-relaxed text-ink-dim">
+          New to this?{' '}
+          <Link href="/learn" className="text-signal hover:underline">
+            Start with the courses
+          </Link>{' '}
+          &mdash; free, no account needed, and enough to read any problem on the board.
+        </p>
+
         <div className="mt-16 grid grid-cols-2 gap-px border border-line bg-line sm:grid-cols-4">
           {[
             ['Open problems', meta.stats.activeProblems],

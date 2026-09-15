@@ -344,6 +344,64 @@ export interface FetchStateTable {
   last_fetched_at: Timestamp;
 }
 
+/* ------------------------------------------------------------------ */
+/* Courses                                                             */
+/* ------------------------------------------------------------------ */
+
+export type LessonBlock =
+  | { kind: 'PROSE'; text: string }
+  | { kind: 'STATEMENT'; text: string; epistemicKind: EpistemicKind; sourceKeys: string[] }
+  | { kind: 'CALLOUT'; title: string; text: string }
+  | {
+      kind: 'COMPARE';
+      caption: string;
+      wrong: { label: string; text: string };
+      right: { label: string; text: string };
+    }
+  | { kind: 'CHECKLIST'; title: string; items: string[] };
+
+export interface CoursesTable {
+  id: Generated<string>;
+  slug: string;
+  title: string;
+  summary: string;
+  outcome: string;
+  track: string;
+  domain_key: string | null;
+  estimated_minutes: Generated<number>;
+  sort_order: Generated<number>;
+  created_at: Timestamp;
+}
+
+export interface LessonsTable {
+  id: Generated<string>;
+  course_id: string;
+  slug: string;
+  title: string;
+  hook: string;
+  blocks: Json<LessonBlock[]>;
+  problem_refs: Generated<string[]>;
+  minutes: Generated<number>;
+  sort_order: Generated<number>;
+}
+
+export interface LessonQuestionsTable {
+  id: Generated<string>;
+  lesson_id: string;
+  prompt: string;
+  options: Json<string[]>;
+  correct_index: number;
+  explanation: string;
+  sort_order: Generated<number>;
+}
+
+export interface LessonProgressTable {
+  user_id: string;
+  lesson_id: string;
+  completed_at: Timestamp;
+  answers: Json<number[]>;
+}
+
 export interface RateLimitsTable {
   key: string;
   count: number;
@@ -454,6 +512,10 @@ export interface Database {
   validations: ValidationsTable;
   reputation_events: ReputationEventsTable;
   fetch_state: FetchStateTable;
+  courses: CoursesTable;
+  lessons: LessonsTable;
+  lesson_questions: LessonQuestionsTable;
+  lesson_progress: LessonProgressTable;
   rate_limits: RateLimitsTable;
   host_cooldowns: HostCooldownsTable;
   ingestion_runs: IngestionRunsTable;

@@ -28,6 +28,7 @@ REAL WORLD PROBLEM → EVIDENCE → HUMAN HYPOTHESES → DISCUSSION
 | **Research** (`/research`)              | Every agent run on the platform, the agent registry with each agent's tool permissions, and the ingestion curation queue.                                                                                |
 | **Method** (`/research/method`)         | How claims are labelled, how contributions are scored, and exactly what is synthetic in this deployment.                                                                                                 |
 | **Leaderboard** (`/leaderboard`)        | Global, weekly and per-domain standing; top problems; recent validations _and rejections_ — a well-reasoned rejection is a result.                                                                       |
+| **Learn** (`/learn`)                    | 6 free interactive courses, 18 lessons: how to work here, and the systems themselves. Written in the product's own notation, cited to the same source library, open with no account.                      |
 | **My work / Profile**                   | A researcher's problems, hypotheses, evidence and a fully auditable reputation history. No credentials required or recorded.                                                                             |
 
 ### Rules the code enforces, not just documents
@@ -51,6 +52,10 @@ REAL WORLD PROBLEM → EVIDENCE → HUMAN HYPOTHESES → DISCUSSION
   a document reaches a human, and records the verdict on everything it refused.
 - **Volume is not a path to standing.** A contribution's reputation award is
   damped by how much the same author has already posted on the same problem.
+- **Reading is not contributing.** Finishing a lesson records that you read it
+  and awards no reputation. Standing comes from research other people can check,
+  and the API test suite asserts that no reputation event exists after a lesson
+  is completed.
 - **A publisher who says "wait" is not asked again.** `Retry-After` puts the
   whole host on a cooldown that survives the process, so a refusal from one
   endpoint stops the requests queued behind it and the next day's cycle too.
@@ -569,9 +574,10 @@ pnpm verify        # typecheck + lint + test
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `packages/common/tests` | Scoring weights and volume damping, reputation tiers, confidence from evidence, the validation gate, hypothesis lifecycle transitions, URL and source normalisation, deduplication, SHA-256 vectors, prompt-injection flagging, rate limits, the problem publication checklist, and the intake relevance gate pinned against documents live feeds actually returned. |
 | `packages/agents/tests` | Agent registry and tool permissions, output validation and citation whitelisting, every role's deterministic behaviour, prompt construction and untrusted-text wrapping, JSON extraction. Plus intake: RSS/Atom/entity parsing against the shapes real publishers serve, feed-link repair, the HTTP client's refusals, claim extraction. |
-| `apps/api/tests`        | The HTTP surface against a real seeded database: filters, epistemic invariants on responses, auth, contribution scoring and damping, the self-validation ban, evidence attachment and status derivation, private-host rejection, the full-review pipeline, agent-run rate limiting, leaderboard ordering, profiles, ingestion, publishing from a candidate, and the Google OAuth flow against forged tokens. |
+| `apps/api/tests`        | The HTTP surface against a real seeded database: filters, epistemic invariants on responses, auth, contribution scoring and damping, the self-validation ban, evidence attachment and status derivation, private-host rejection, the full-review pipeline, agent-run rate limiting, leaderboard ordering, profiles, ingestion, publishing from a candidate, the Google OAuth flow against forged tokens, and the courses: every lesson citation resolving to a real source record, and no reputation moving when a lesson is completed. |
+| `packages/db/tests`     | The connection configuration, the Postgres rate limiter's atomicity, and course seed integrity: no citation that the source library cannot resolve, no unsourced FACT or SOURCE_CLAIM, no lesson pointing at a problem that is not on the board.                                                                                  |
 | `apps/worker/tests`     | The daily schedule: it must not fetch other people's servers twice in a day, and must still fetch them once after a restart.                                                                                                                                                                                                    |
-| `tests/e2e`             | Two journeys. The researcher's: sign in → board → problem → hypothesis → contribute → run a research action → inspect the agent run → see it in the record. And the curator's: the intake health panel, approving a candidate, the editor that approval unlocks, and the checklist refusing an empty statement.                |
+| `tests/e2e`             | Three journeys. The researcher's: sign in → board → problem → hypothesis → contribute → run a research action → inspect the agent run → see it in the record. The curator's: the intake health panel, approving a candidate, the editor that approval unlocks, and the checklist refusing an empty statement. And the newcomer's: reading a course with no account, answering a check and getting the explanation, then marking a lesson read and confirming reputation did not move. |
 
 The API suite needs `TEST_DATABASE_URL` pointing at a database it may drop.
 
