@@ -2,6 +2,17 @@ import { z } from 'zod';
 
 const DEV_SECRET = 'dev-only-secret-change-me-please';
 
+/**
+ * Every session secret this repository has ever published.
+ *
+ * Checking only the schema default was not enough, and the gap was the one that
+ * mattered: `.env.example` tells you to replace a *different* placeholder, so
+ * copying that file and deploying it passed the guard while signing sessions
+ * with a value printed in the repository. A secret is only a secret if it is
+ * not in the source tree, so all of them are refused.
+ */
+const PUBLISHED_SECRETS = new Set([DEV_SECRET, 'change-me-to-a-long-random-string', 'change-me']);
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().default(3001),
@@ -75,12 +86,12 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
 
   const env = parsed.data;
 
-  // A published deployment signing sessions with the documented development key
-  // is one anybody can mint a session for. Refusing to boot is the only safe
-  // response: a warning in a log nobody reads is not one.
-  if (env.NODE_ENV === 'production' && env.APP_SECRET === DEV_SECRET) {
+  // A deployment signing sessions with a key printed in this repository is one
+  // anybody can mint a session for. Refusing to boot is the only safe response:
+  // a warning in a log nobody reads is not one.
+  if (env.NODE_ENV === 'production' && PUBLISHED_SECRETS.has(env.APP_SECRET.trim())) {
     throw new Error(
-      'APP_SECRET is still the development default. Set a real one before deploying: openssl rand -base64 32',
+      'APP_SECRET is still a placeholder published in this repository. Set a real one before deploying: openssl rand -base64 32',
     );
   }
 
