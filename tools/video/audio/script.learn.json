@@ -1,0 +1,19 @@
+{
+  "voice": "af_heart",
+  "speed": 1.0,
+  "lang": "en-us",
+  "liftsAt": "noxp",
+  "lines": [
+    { "id": "cold",     "text": "The board is written for people who already know how to read it.",                                  "gapAfter": 0.5 },
+    { "id": "cost",     "text": "That is a barrier this place cannot afford.",                                                       "gapAfter": 0.8 },
+    { "id": "open",     "text": "So there are courses. Eighteen lessons, free, and they need no account.",                           "gapAfter": 0.6 },
+    { "id": "tracks",   "text": "Two tracks. How to work here, and the systems themselves.",                                         "gapAfter": 0.6 },
+    { "id": "notation", "text": "They are written in the product's own notation. Every claim carries its kind, and the publication it came from.", "gapAfter": 0.65 },
+    { "id": "unknown",  "text": "And where nobody knows yet, the lesson says so, in as many words.",                                  "gapAfter": 0.7 },
+    { "id": "sources",  "text": "Every citation resolves to a real publication, and a test refuses any lesson that cites one it cannot.",  "gapAfter": 0.65 },
+    { "id": "noxp",     "text": "No points. No streaks. Nothing here earns reputation.",                                             "gapAfter": 0.55 },
+    { "id": "why",      "text": "Standing comes from research other people can check. Reading is not contributing.",                  "gapAfter": 0.7 },
+    { "id": "end",      "text": "What a lesson leaves you with is a real unsolved problem, and enough to argue about it.",            "gapAfter": 0.65 },
+    { "id": "sign",     "text": "Learn the method. Then come and use it.",                                                           "gapAfter": 1.8 }
+  ]
+}

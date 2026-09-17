@@ -1,0 +1,23 @@
+{
+  "name": "@saveus/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "seed:research": "tsx src/cli/seed-research.ts",
+    "intake": "tsx src/cli/intake.ts"
+  },
+  "dependencies": {
+    "@saveus/agents": "workspace:*",
+    "@saveus/common": "workspace:*",
+    "@saveus/db": "workspace:*",
+    "ioredis": "^5.4.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "name": "save-us",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @saveus/web dev",
+    "dev:api": "pnpm --filter @saveus/api dev",
+    "dev:worker": "pnpm --filter @saveus/worker dev",
+    "build": "pnpm --filter @saveus/web build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:unit": "vitest run packages",
+    "test:api": "vitest run apps/api",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "db:migrate": "pnpm --filter @saveus/db migrate",
+    "db:reset": "pnpm --filter @saveus/db reset",
+    "db:seed": "pnpm --filter @saveus/db seed && pnpm --filter @saveus/worker seed:research",
+    "setup": "bash scripts/dev-services.sh && pnpm install && pnpm db:reset && pnpm db:seed",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test",
+    "services": "bash scripts/dev-services.sh",
+    "check:sources": "pnpm --filter @saveus/db check:sources",
+    "intake": "pnpm --filter @saveus/worker intake",
+    "video:shots": "node tools/video/shots.mjs",
+    "video:demo": "node tools/video/demo.mjs",
+    "video:preview": "node tools/video/preview.mjs",
+    "video:voice": "tools/video/voice.sh",
+    "video:film": "node tools/video/film.mjs",
+    "video:tour": "node tools/video/tour.mjs",
+    "db:deploy": "pnpm --filter @saveus/db migrate"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.20.0",
+    "@playwright/test": "^1.50.1",
+    "@types/node": "^22.13.4",
+    "eslint": "^9.20.1",
+    "eslint-config-prettier": "^10.0.1",
+    "globals": "^17.12.0",
+    "playwright": "^1.63.0",
+    "prettier": "^3.5.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.24.0",
+    "vitest": "^3.0.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@tailwindcss/oxide",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
+}

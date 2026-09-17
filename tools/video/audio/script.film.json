@@ -1,0 +1,19 @@
+{
+  "voice": "af_heart",
+  "speed": 1.0,
+  "lang": "en-us",
+  "liftsAt": "proof",
+  "lines": [
+    { "id": "cold",    "text": "AI might destroy us.",                                                                  "gapAfter": 0.5 },
+    { "id": "cold2",   "text": "Let's make it save us first.",                                                          "gapAfter": 0.85 },
+    { "id": "what",    "text": "A laboratory for the problems nobody has solved.",                                      "gapAfter": 0.6 },
+    { "id": "board",   "text": "Every problem stated properly. Quantified consequences. Real constraints. Criteria you could actually measure.", "gapAfter": 0.6 },
+    { "id": "epistem", "text": "And every claim carries its kind. A measured fact and an admitted gap never look alike.", "gapAfter": 0.65 },
+    { "id": "agents",  "text": "Eleven narrow agents research the work, and attack it. None of them decides what is true.", "gapAfter": 0.6 },
+    { "id": "intake",  "text": "Each day it reads the World Health Organization, the Lancet, Europe PMC. Of a hundred and ninety three documents, thirteen reach a human.", "gapAfter": 0.65 },
+    { "id": "human",   "text": "Because nothing here publishes itself.",                                                "gapAfter": 0.6 },
+    { "id": "proof",   "text": "Twenty one open problems. A hundred and forty one real sources. Zero invented citations.", "gapAfter": 0.7 },
+    { "id": "cta",     "text": "Bring a problem. Bring a source. Bring the objection nobody wants to hear.",            "gapAfter": 0.6 },
+    { "id": "sign",    "text": "Save us.",                                                                              "gapAfter": 1.8 }
+  ]
+}
