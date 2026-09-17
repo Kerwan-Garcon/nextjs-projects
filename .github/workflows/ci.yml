@@ -1,0 +1,65 @@
+name: CI
+
+# There was none. Every "the tests pass" in this repository's history was true
+# only because somebody ran them by hand, which is a promise the next change
+# does not have to keep.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    # The API suite runs against a real Postgres on purpose: the behaviour
+    # worth testing - derived status, scoring, the rate limiter's atomicity -
+    # lives in SQL, and a mock would test neither.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: saveus
+          POSTGRES_PASSWORD: saveus
+          POSTGRES_DB: saveus
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://saveus:saveus@127.0.0.1:5432/saveus
+      TEST_DATABASE_URL: postgres://saveus:saveus@127.0.0.1:5432/saveus_test
+      APP_SECRET: ci-secret-value-for-sessions-only
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The suite drops and recreates this one, so it only has to exist.
+      - name: Create the test database
+        run: psql "$DATABASE_URL" -c 'CREATE DATABASE saveus_test'
+
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+
+      # Catches what the type checker cannot: a client/server boundary
+      # violation, a bad import, a route that does not compile.
+      - run: pnpm build
