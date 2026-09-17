@@ -33,7 +33,8 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   /**
    * Public origin of the web app, used to build the OAuth redirect URI and to
-   * bound where a sign-in may return to.
+   * bound where a sign-in may return to. Defaulted from the platform when the
+   * platform knows it - see `resolvePublicAppUrl`.
    */
   PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
   /**
@@ -77,8 +78,36 @@ export function googleConfig(env: AppEnv): GoogleOAuthConfig | null {
   };
 }
 
+/**
+ * Where this deployment answers, when nobody has said.
+ *
+ * Deploying has a chicken-and-egg in it: the URL is assigned by the platform,
+ * so it cannot be configured before the first deploy. Vercel publishes the
+ * production host to every build and invocation as
+ * `VERCEL_PROJECT_PRODUCTION_URL`, which is stable across deployments - unlike
+ * `VERCEL_URL`, which is per-deployment and therefore useless as an OAuth
+ * redirect, since Google only accepts URIs registered in advance.
+ *
+ * An explicit PUBLIC_APP_URL always wins, because a custom domain is something
+ * only the operator knows about.
+ */
+export function resolvePublicAppUrl(source: NodeJS.ProcessEnv): string | undefined {
+  const explicit = source.PUBLIC_APP_URL?.trim();
+  if (explicit) return explicit;
+
+  const host = source.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  // The platform gives a bare host. Anything carrying a scheme already is
+  // passed through rather than prefixed into nonsense.
+  if (host) return /^https?:\/\//i.test(host) ? host : `https://${host}`;
+
+  return undefined;
+}
+
 export function readEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
-  const parsed = EnvSchema.safeParse(source);
+  const publicAppUrl = resolvePublicAppUrl(source);
+  const parsed = EnvSchema.safeParse(
+    publicAppUrl === undefined ? source : { ...source, PUBLIC_APP_URL: publicAppUrl },
+  );
   if (!parsed.success) {
     const issues = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
     throw new Error(`Invalid environment:\n  ${issues.join('\n  ')}`);

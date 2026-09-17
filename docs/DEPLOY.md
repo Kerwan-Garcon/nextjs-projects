@@ -98,7 +98,7 @@ In **Project → Settings → Environment Variables**, for Production:
 | `DATABASE_URL`   | The pooled Neon string.                                    |
 | `APP_SECRET`     | `openssl rand -base64 32`. **The app refuses to start in production without a real one.** |
 | `CRON_SECRET`    | `openssl rand -base64 32`. Vercel sends it to the cron endpoint automatically. |
-| `PUBLIC_APP_URL` | `https://your-deployment.vercel.app`                       |
+| `PUBLIC_APP_URL` | `https://your-deployment.vercel.app`. **Optional** — left unset, it is taken from Vercel's own `VERCEL_PROJECT_PRODUCTION_URL`, so you do not need to know the URL before the first deploy. Set it once you have a custom domain. |
 
 Optional:
 
