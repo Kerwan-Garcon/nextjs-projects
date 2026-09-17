@@ -86,8 +86,23 @@ npx vercel link
 npx vercel --prod
 ```
 
-`vercel.json` already sets the build command, the region, the cron schedule and
-the security headers. Vercel detects pnpm workspaces on its own.
+**Set the Root Directory to `apps/web`** in Project → Settings → Build and
+Deployment. This is a pnpm workspace and `next` is a dependency of
+`apps/web/package.json`, not of the repository root; pointed at the root, Vercel
+looks for Next.js, does not find it, and fails the build with:
+
+```
+Error: No Next.js version detected. Make sure your package.json has "next" in
+either "dependencies" or "devDependencies".
+```
+
+Leave **Include files outside the Root Directory** enabled — it is the default
+for a detected monorepo, and the build needs the workspace packages above
+`apps/web`. Vercel runs the install at the workspace root on its own.
+
+`apps/web/vercel.json` sets the region, the cron schedule and the security
+headers; the build command and output directory are the framework defaults,
+which are correct once the root directory points at the app.
 
 ### 4. Environment
 
