@@ -2,3 +2,8 @@ node_modules
 .next
 dist
 pnpm-lock.yaml
+
+# Vendored by `neon skills`. Reformatting upstream files would make the next
+# update conflict against changes nobody made on purpose.
+.claude/skills
+skills-lock.json
